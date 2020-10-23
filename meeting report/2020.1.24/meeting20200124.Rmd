@@ -1,0 +1,200 @@
+---
+title: "report 20200124"
+author: "Linyi Guo"
+date: "2020/1/24"
+output: 
+  html_document
+---
+
+# import
+
+```{r}
+setwd("C:/Users/guoly/Desktop/markdown/2020 Winter/BuildThePrior")
+idevalmat1_1 <- read.csv("data/idevalmat1_1.csv")
+idevalmat1_2 <- read.csv("data/idevalmat1_2.csv")
+idevalmat1_3 <- read.csv("data/idevalmat1_3.csv")
+idevalmat1_4 <- read.csv("data/idevalmat1_4.csv")
+idevalmat1_5 <- read.csv("data/idevalmat1_5.csv")
+idevalmat1_6 <- read.csv("data/idevalmat1_6.csv")
+idevalmat1_7 <- read.csv("data/idevalmat1_7.csv")
+
+idevalmat2_1 <- read.csv("data/idevalmat2_1.csv")
+idevalmat2_2 <- read.csv("data/idevalmat2_2.csv")
+idevalmat2_3 <- read.csv("data/idevalmat2_3.csv")
+idevalmat2_4 <- read.csv("data/idevalmat2_4.csv")
+idevalmat2_5 <- read.csv("data/idevalmat2_5.csv")
+idevalmat2_6 <- read.csv("data/idevalmat2_6.csv")
+idevalmat2_7 <- read.csv("data/idevalmat2_7.csv")
+
+idevalmat3_1 <- read.csv("data/idevalmat3_1.csv")
+idevalmat3_2 <- read.csv("data/idevalmat3_2.csv")
+idevalmat3_3 <- read.csv("data/idevalmat3_3.csv")
+idevalmat3_4 <- read.csv("data/idevalmat3_4.csv")
+idevalmat3_5 <- read.csv("data/idevalmat3_5.csv")
+idevalmat3_6 <- read.csv("data/idevalmat3_6.csv")
+idevalmat3_7 <- read.csv("data/idevalmat3_7.csv")
+```
+
+
+```{r}
+
+## put them together
+Idevalmat <- rbind(idevalmat1_1, idevalmat1_2, idevalmat1_3, idevalmat1_4, idevalmat1_5, idevalmat1_6,idevalmat1_7,
+                   idevalmat2_1, idevalmat2_2, idevalmat2_3, idevalmat2_4, idevalmat2_5, idevalmat2_6,idevalmat2_7,
+                   idevalmat3_1, idevalmat3_2, idevalmat3_3, idevalmat3_4, idevalmat3_5, idevalmat3_6,idevalmat3_7)
+
+
+Idevalmat1 <- rbind(idevalmat1_1, idevalmat1_2, idevalmat1_3, idevalmat1_4, idevalmat1_5, idevalmat1_6,idevalmat1_7)
+Idevalmat2 <- rbind(idevalmat2_1, idevalmat2_2, idevalmat2_3, idevalmat2_4, idevalmat2_5, idevalmat2_6,idevalmat2_7)
+Idevalmat3 <- rbind(idevalmat3_1, idevalmat3_2, idevalmat3_3, idevalmat3_4, idevalmat3_5, idevalmat3_6,idevalmat3_7)
+# note: the first column of Idevalmat,1,2,3 is 1:n instead of variance 
+
+```
+
+# plot
+
+```{r}
+
+library(ggplot2)
+
+ggplot(Idevalmat) + 
+  geom_histogram(aes(x=variance.1), binwidth = 0.2, color = "gray")
+ggplot(Idevalmat) +
+  geom_histogram(aes(x=variance.2), binwidth = 0.2, color = "gray")
+
+
+ggplot(Idevalmat1) + 
+  geom_histogram(aes(x=variance.1), binwidth = 0.2, color = "gray")
+ggplot(Idevalmat1) +
+  geom_histogram(aes(x=variance.2), binwidth = 0.2, color = "gray")
+
+
+ggplot(Idevalmat2) + 
+  geom_histogram(aes(x=variance.1), binwidth = 0.2, color = "gray")
+ggplot(Idevalmat2) +
+  geom_histogram(aes(x=variance.2), binwidth = 0.2, color = "gray")
+
+
+ggplot(Idevalmat3) + 
+  geom_histogram(aes(x=variance.1), binwidth = 0.2, color = "gray")
+ggplot(Idevalmat3) +
+  geom_histogram(aes(x=variance.2), binwidth = 0.2, color = "gray")
+```
+
+
+```{r}
+
+ggplot(Idevalmat) + 
+  geom_density(aes(x=variance.1), color = "blue")
+
+ggplot(Idevalmat) +
+  geom_density(aes(x=variance.2), color = "red")
+
+```
+
+
+
+```{r}
+
+x <- seq(0.2,20,0.2)
+Df <- c()
+
+for (i in 1:10) {
+  for (j in 1:10) {
+    
+    y <- df(x, df1 = i, df2 = j)
+    
+    df <- data.frame(x=x, y=y, df1=i, df2=j)
+    
+    Df <- rbind(Df, df)
+  }
+  
+}
+
+View(Df)
+
+ggplot(data= Df, aes(x= x, y=y) ) + 
+  geom_line() + 
+  facet_grid(df1~df2) + # rows are df1
+  theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank())
+
+  
+p2 <- ggplot() + 
+  geom_line(data= Df, aes(x= x, y=y)) + 
+  facet_grid(df1~df2) +  # rows are df1
+  theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank())
+p2 <- p2 + geom_density(data= Idevalmat, aes(x=variance.2), color="red") 
+p2
+
+# the distribution of variance.2 seems to be a f distribution
+
+```
+
+```{r}
+
+Df2 <- c()
+
+for (i in 1:10) {
+  for (j in 1:10) {
+    
+    y <- dgamma(x, shape = i, rate = j)
+    
+    df <- data.frame(x=x, y=y, shape=i, rate = j)
+    
+    Df2 <- rbind(Df2, df)
+  }
+  
+}
+
+View(Df2)
+
+
+ggplot(Df2) + 
+  geom_line(aes(x=x, y=y)) + 
+  facet_grid(shape~rate) + # row is shape
+  theme(axis.text = element_blank(), axis.ticks = element_blank())
+
+
+p1 <- ggplot() + geom_line(data=Df2, aes(x=x, y=y)) +
+  facet_grid(shape~rate) + 
+  theme(axis.text = element_blank(), axis.ticks = element_blank())
+p1 <- p1 + geom_density(data=Idevalmat, aes(x=variance.1), color="blue")
+p1
+
+# the distribution of variance.1 is likely a gamma distribution
+
+```
+
+
+```{r}
+
+f1 <- density(Idevalmat$variance.1, n = 1000) # default is 512
+f2 <- density(Idevalmat$variance.2, n = 1000)
+# f is a list
+str(f1)
+str(f2)
+```
+
+# foreach + doParallel
+
+```{r}
+
+library(foreach)
+library(doParallel)
+
+
+cl <- makeCluster(8)
+registerDoParallel(cl)
+
+system.time({
+  output <- foreach(i = 1:100000) %dopar% {i+1}
+})
+
+#  用户  系统  流逝 
+# 22.83  1.77 24.61 
+
+system.time({
+  output <- foreach(i = 1:100000) %do% {i+1}
+})
+```
+

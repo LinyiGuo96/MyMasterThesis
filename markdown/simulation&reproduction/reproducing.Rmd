@@ -1,0 +1,877 @@
+---
+title: "seasadj simu"
+author: "linyiguo"
+date: "2019.5.26"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+Well, I am here again. In this log, I am going to reproduce the three seasonal adjustment methods from StatCan stuff based on the data I generated in last log **simulate data**.   
+The first two should be relatively easier, at least this is what Aaron told me last week...well, I hope so. The first one is X12-ARIMA, which is actually a software package developed by U.S. Census Bureau. In R, we can use package *x12* to access the X12-ARIMA method.
+
+为了能在周一见面的时候给Aaron一份相对满意的答卷，我决定今晚上熬夜奋战一下。毕竟按我现在的结果，是明显不能让他满意的。也的确需要push一下自己，赶一赶进度了。晃晃悠悠地看书，不知道什么时候才能做出来东西了。加油吧，小伙子！今晚上把这两个model的curve给做出来！你可以的！Come On!
+
+*--Update 5.28--* 呵呵呵，Aaron把我鸽了，这也正好给了我多一天的时间来想怎么build the model of state space model.
+
+# X-12-ARIMA 
+学新知识的道路上注定要经历各种弯路，就像我现在一样。According to [wiki](https://en.wikipedia.org/wiki/X-12-ARIMA), X-12-ARIMA is the successor of X-11-ARIMA, and the current version is X-13ARIMA-SEATS(or X-13, and seats means Signal Extraction in ARIMA Time Series). As for the relations between these models, check [website](https://www.r-bloggers.com/seasonal-adjusment-on-the-fly-with-x-13arima-seats-seasonal-and-ggplot2/) and introduction of the [paper](https://cran.r-project.org/web/packages/seasonal/vignettes/seas.pdf). I guess I am going to use the latest version, that is X-13, to remove seasonal component in our ts.   
+为了节省时间，也为了降低难度，第一个例子我用上面提到的paper中的数据来进行分析：
+```{r}
+library("seasonal")
+# The seas function provides the core functionality of the package, and the 1st argument is 'ts'
+# The unemp example series measures US unemployment and is included in seasonal
+m <- seas(unemp)
+summary(m)
+plot(m)
+# The result is close but not identical to the official seasonally adjusted series.
+# final(model) gives the series after seasonal adjustment
+```
+
+By default,  a call to seas also invokes the following automatic procedures of X-13:
+*  Transformation selection (log / no log);  
+*  Detection of trading day and Easter effects;  
+*  Outlier detection;  
+*  ARIMA model search.  
+In the example above, X-13 opts to perform no pre-transformation, does not adjust for weekday or Easter effects, detects no outliers and models the series by a (1 1 1)(0 1 1) seasonal ARIMA (autoregressive integrated moving average) model. This can be seen from the summary output: There are no coefficients for Easter or outliers, and the ARIMA specification and the transformation are shown at the bottom   
+By default, seas calls the *SEATS* adjustment procedure(which decomposes the ARIMA model).To perform the alternative *X-11* adjustment procedure, the following option can be used: 
+```{r}
+library("seasonal")
+library("seasonalview")
+eg_seats <- seas(unemp)
+eg_x11 <- seas(unemp, x11 = "")
+plot(unemp,col="black",ylim=c(5500,15300),ylab="")
+par(new=TRUE)
+plot(final(eg_seats),col="red",ylim=c(5500,15300),ylab="")
+par(new=TRUE)
+plot(final(eg_x11),col="blue",ylim=c(5500,15300),ylab="")
+seas(x = unemp,arima.model = "(1 1 1)(0 1 1)",regression.aictest = NULL,outlier = NULL,transform.function = "none")
+```
+
+Well, the results here seem to be good. 
+
+### Let's try our own data
+```{r}
+library(forecast)
+library(seasonal)
+set.seed(1)
+model <- Arima(ts(rnorm(24000),freq=12), order=c(0,1,1), seasonal=c(0,1,1),fixed=c(theta=0.5, Theta=0.5))
+data <- simulate(model,nsim=240)
+plot(data)
+m_x11 <- seas(data, x11 = "", regression.aictest =  NULL)
+plot(m_x11)
+m_seats <- seas(data, regression.aictest = NULL)
+plot(m_seats)
+summary(m_seats)
+summary(m_x11)
+plot(data,col="green",ylim=c(-10,2000),ylab="")
+par(new=TRUE)
+plot(final(m_x11),col="red",ylim=c(-10,2000),ylab="")
+par(new=TRUE)
+plot(final(m_seats),col="blue",ylim=c(-10,2000),ylab="")
+legend("topleft",c("Data","X11","SEATS"),col=c("green","red","blue"),lty=c(1,1,1))
+# Messing things up after here.
+plot(data-final(m_seats))
+plot(data-final(m_x11))
+```
+
+emmm, I am confused that why the result from the *SEATS* is different from that out of *X-11*. The model from X-11 is $(0,1,1)(0,1,1)_{12}$ but SEATS gives me $(0,1,1)(0,1,0)_{12}$. The former one is right and the corresponding estimation of $\theta, \Theta$ is also close.
+
+# SEATS
+See above.
+
+# State Space Model
+I just spent a whole day working on the state space model, trying to figure out the steps in this process. To be honest, I was not very, like 80%, clear about bootstrap particle filter, although I spent much time on it during last term. But I have to admit the effort I paid before is worthy, otherwise I can't come up with the following code within one day.
+The resource is mainly from **BOOK Monte Carlo Statistical Methods** and the [lecture](https://onlinelibrary.wiley.com/doi/abs/10.1111/1467-842X.00104).   
+*题外话：刚刚基本一个半小时的时间内我都在处理转pdf的bug，但是目前这个对我来说并不是很重要。只希望自己以后做事情，要知道自己的主要目的是什么，不要因为一些外在的小事情而耽误太长时间，最终得不偿失。*
+```{r}
+library(forecast)
+set.seed(1)
+model <- Arima(ts(rnorm(24000),freq=12), order=c(0,1,1), seasonal=c(0,1,1),fixed=c(theta=0.5, Theta=0.5))
+data <- simulate(model,nsim=240)
+# let's try SIS(Sequential Importance Sampling) at first
+# Initialization
+Tr_0 <- rep(rnorm(1),100)
+Se_0 <- rep(rnorm(1),100)
+w_0 <- rep(1/100,100)
+
+# Generate particles
+Tr_1 <- Tr_0 + rnorm(100)
+Se_1 <- -Se_0 + rnorm(100)
+
+# Compute weights
+w_1 <- w_0 * dnorm(rep(data[1],100) - Tr_1 - Se_1)
+w_1 <- w_1 / sum(w_1) # normalize
+
+# compute state value
+T_1 <- sum(w_1 * Tr_1)
+S_1 <- sum(w_1 * Se_1)
+
+```
+
+这里，我们只把t_1时刻的trend和seasonal摘了出来。我们最终的目的是把整个过程（240个时刻）的trend和seasonal求出来。
+```{r}
+set.seed(1)
+S <- matrix(0,100,251) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,100,251)
+S[,12] <- S_1
+Tr[,12] <- T_1
+w <- w_1
+component <- c(T_1,S_1)
+for (i in 13:251) {
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(100)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(100)
+  
+  # update weights
+  w <- w * dnorm(rep(data[i-11],100)-Tr[,i]-S[,i])
+  w <- w / sum(w)
+  
+  # evaluate state value
+  t <- sum(w * Tr[,i])
+  s <- sum(w * S[,i])
+  
+  # add to our component path
+  component <- rbind(component, c(t,s))
+}
+
+trend <- ts(component[,1],frequency = 12, start = c(2001,1),end = c(2020,12))
+season <- ts(component[,2],frequency = 12, start = c(2001,1),end = c(2020,12))
+plot(trend)
+plot(season)
+plot(data,type="l",ylab="", ylim=c(-50,2000))
+lines(data-season, ylab="",ylim=c(-50,2000),col="red")
+
+```
+
+Well, I think something is wrong here again! it's normal to show some degeneracy here, but the curve after adjusting does not look like that.   
+I am going to try it on the data set **unemp**:
+```{r}
+library("seasonal")
+Data <- unemp # 1990.1-2016.11 # 323 records
+summary(Data)
+set.seed(1)
+S <- matrix(0,100,334) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,100,334) # Hence 323+11 columns
+S[,11] <- rep(0,100)
+Tr[,11] <- rep(0,100)
+w <- rep(1/100,100)
+component <- c()
+for (i in 12:334) {
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(100)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(100)
+  
+  # update weights
+  w <- w * dnorm(rep(data[i-11],100)-Tr[,i]-S[,i])
+  w <- w / sum(w)
+  
+  # evaluate state value
+  t <- sum(w * Tr[,i])
+  s <- sum(w * S[,i])
+  
+  # add to our component path
+  component <- rbind(component, c(t,s))
+}
+trend <- ts(component[,1],frequency = 12, start = c(1990,1),end = c(2016,11))
+season <- ts(component[,2],frequency = 12, start = c(1990,1),end = c(2016,11))
+plot(trend)
+plot(season)
+plot(Data,type="l",ylab="", ylim=c(5000,16500))
+lines(Data-season, ylab="",ylim=c(5000,16500),col="red")
+
+```
+
+The result is still not ideal. I think the initialization is not appropriate, since the trend and seasonal values are too small. I am going to test my guess by using **SIR(Sequential Importance Resampling)**. Since in SIR, there should not have 'degeneracy' phenomenon, so if the result is still like the pics above, there must be something wrong.(Use **unemp** data)
+```
+library("seasonal")
+Data <- unemp # 1990.1-2016.11 # 323 records
+summary(Data)
+set.seed(1)
+S <- matrix(0,100,334) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,100,334) # Hence 323+11 columns
+component <- c()
+for (i in 12:334) {
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(100)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(100)
+  
+  # update weights
+  w <- dnorm(rep(Data[i-11],100)-Tr[,i]-S[,i])
+  w <- w / sum(w)
+  
+  # evaluate state value
+  t <- sum(w * Tr[,i])
+  s <- sum(w * S[,i])
+  
+  # add to our component path
+  component <- rbind(component, c(t,s))
+  
+  # resample
+  Tr[,i] <- sample(Tr[,i], size=100, replace=TRUE, prob=w)
+  S[,i] <- sample(S[,i], size=100, replace=TRUE, prob=w)
+}
+trend <- ts(component[,1],frequency = 12, start = c(1990,1),end = c(2016,11))
+season <- ts(component[,2],frequency = 12, start = c(1990,1),end = c(2016,11))
+plot(trend)
+plot(season)
+plot(Data,type="l",ylab="", ylim=c(5000,16500))
+lines(Data-season, ylab="",ylim=c(5000,16500),col="red")
+```
+```{r}
+library("seasonal")
+Data <- unemp # 1990.1-2016.11 # 323 records
+summary(Data)
+set.seed(1)
+S <- matrix(0,100,334) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,100,334) # Hence 323+11 columns
+component <- c()
+for (i in 12:334) {
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(100)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(100)
+  # update weights
+  w <- dnorm(rep(Data[i-11],100)-Tr[,i]-S[,i])
+  w <- w / sum(w)
+}
+dnorm(rep(Data[323],100)-Tr[,334]-S[,334])
+# update weights
+  w <- dnorm(rep(Data[1],100)-Tr[,12]-S[,12])
+  w <- w / sum(w)
+```
+
+**- Update 6.2 -** 从上次和Aaron见完之后，就一直在划水，心里也挺不过意不去的。因为种种事情都没有静下心来学习，感觉今天积攒了很久的洪荒之力可以稍微发泄一下？另外就是手腕这两天也一直没有休息过来，还是要多加注意呀。接下来说正事儿吧。
+
+If we analyse the case above why the weights are zeros, it is not difficult to find our initializations are around 0 and $Y$, our data is quite large. If we use $\phi(y_t-T_t-S_t)$ to generate our weights, it is obvious that weights are gonna very small, almost 0.($\phi()$ is the density of standard normal distribution.)    
+So why don't I let the first trend component (i.e. $T_1$) to be equal to $Y_1$? Cause we suppose $$\sum_{i=0}^{s-1} S_{t-i} = 0$$
+well,no more talking, let's try. (Hope it works well)
+```
+library("seasonal")
+Data <- unemp # 1990.1-2016.11 # 323 records
+summary(Data)
+set.seed(1)
+S <- matrix(0,100,334) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,100,334) # Hence 323+11 columns
+Tr[,11] <- Data[1]
+component <- c()
+for (i in 12:334) {
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(100)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(100)
+  
+  # update weights
+  w <- dnorm(rep(Data[i-11],100)-Tr[,i]-S[,i])
+  w <- w / sum(w)
+  
+  # evaluate state value
+  t <- sum(w * Tr[,i])
+  s <- sum(w * S[,i])
+  
+  # add to our component path
+  component <- rbind(component, c(t,s))
+  
+  # resample
+  Tr[,i] <- sample(Tr[,i], size=100, replace=TRUE, prob=w)
+  S[,i] <- sample(S[,i], size=100, replace=TRUE, prob=w)
+}
+trend <- ts(component[,1],frequency = 12, start = c(1990,1),end = c(2016,11))
+season <- ts(component[,2],frequency = 12, start = c(1990,1),end = c(2016,11))
+plot(trend)
+plot(season)
+plot(Data,type="l",ylab="", ylim=c(5000,16500),lwd=1.5)
+lines(Data-season, ylab="",ylim=c(5000,16500),col="red")
+```
+
+This chunk is wrong since the weights' problem. I am going to check the weights below:
+
+```{r}
+set.seed(1)
+S <- matrix(0,100,334) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,100,334) # Hence 323+11 columns
+Tr[,11] <- Data[1]
+
+for (i in 12) {
+  
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(100)
+  for (j in 1:11) {
+    S[,i] <- S[,i]-S[,i-j] 
+    }
+  S[,i] <- S[,i] + rnorm(100)
+  
+  # update weights
+  w <- dnorm(Data[i-11]-Tr[,i]-S[,i])
+  w <- w / sum(w)
+}
+
+Tr[,13] <- Tr[,12] +rnorm(100)
+S[,13] = -S[,12] + rnorm(100)
+w<-dnorm(Data[2]-Tr[,13]-S[,13])
+w
+Data[2]-Tr[,13]-S[,13]
+
+```
+...stupid...
+The result is still not right. The assumption just worked at the first moment then failed.
+
+Maybe I can use the first twelve values $Y_1,...,Y_12$ to generate an initial set of seasonal components? In other words, i) compute the average $\bar{Y}$; ii) use the differences as seasonal components of one loop.   But this will be only correct when there is no trend influence in this ts! 
+
+**WHAT CAN I DO ?** 自己再多想一想 总会有办法的。网上查查资料吧。
+
+Wait... 我为什么不试一试我自己的数据呢？如果trend是缓慢变化的话(*-Update 6.4- actually I am not sure whether we can use the state space model above in **unemp** data set, since the sarima model of it is different from that of Durbin's report*)，某种程度上SIR应该是可以用的吧？ try it:
+```
+set.seed(1)
+S <- matrix(0,100,251) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,100,251)
+Tr[,11] <- data[1]
+component <- c()
+for (i in 12:251) {
+  
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(100)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(100)
+  
+  # update weights
+  w <- dnorm(data[i-11]-Tr[,i]-S[,i])
+  w <- w / sum(w)
+  
+  # evaluate state value
+  t <- sum(w * Tr[,i])
+  s <- sum(w * S[,i])
+  
+  # add to our component path
+  component <- rbind(component, c(t,s))
+  
+  # resample
+  Tr[,i] <- sample(Tr[,i], size =100, replace = TRUE, prob = w)
+  S[,i] <- sample(S[,i], size = 100, replace = TRUE, prob = w)
+}
+
+trend <- ts(component[,1],frequency = 12, start = c(2001,1),end = c(2020,12))
+season <- ts(component[,2],frequency = 12, start = c(2001,1),end = c(2020,12))
+plot(trend)
+plot(season)
+plot(data,type="l",ylab="", ylim=c(-50,2000))
+lines(data-season, ylab="",ylim=c(-50,2000),col="red")
+```
+The chunk above can not run. The code below is to check where the degeneracy happens:
+```{r}
+set.seed(1)
+S <- matrix(0,100,251) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,100,251)
+Tr[,11] <- data[1]
+component <- c()
+for (i in 12:14) {
+  
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(100)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(100)
+  
+  # update weights
+  w <- dnorm(data[i-11]-Tr[,i]-S[,i])
+  w <- w/sum(w)
+  
+  # evaluate state value
+  t <- sum(w * Tr[,i])
+  s <- sum(w * S[,i])
+  
+  # add to our component path
+  component <- rbind(component, c(t,s))
+  
+  # resample
+  Tr[,i] <- sample(Tr[,i], size =100, replace = TRUE, prob = w)
+  S[,i] <- sample(S[,i], size = 100, replace = TRUE, prob = w)
+}
+w
+
+# seperate(WRONG)
+w <- dnorm(data[3]-Tr[,14]-S[,14])
+w <- w/sum(w)
+w
+```
+
+It is very weird. The result from the for loop is different from that of separate code.    
+**-Update 6.4-** after talking with Aaron, I realized where I made a mistake. The Tr and S I used in the seperate case are after resampling...(stupid -_-|)
+
+
+
+--------------------------------**UPDATE 6.4**-------------------------------------
+目前来看，我的问题100%是出自initialization and degeneracy, but not clear which is exactly the basic reason. Whatever, plotting something always works when analysing our data/error.   
+Let's see some specific cases:
+```{r}
+set.seed(1)
+# 1st moment
+# generate particles
+Tr1 = data[1] + rnorm(100)
+S1 = rnorm(100) # I just realized why don't I use the seasonal data from *seas* as my initial? Try later.
+
+# data vs particles
+plot(data[1],pch=19,col="red",cex=1.5)
+points(x=rep(1,100),y=Tr1+S1+rnorm(100))
+
+# update weights
+w = dnorm(data[1]-Tr1-S1)
+w = w/sum(w)
+
+# resample
+Tr1r = sample(Tr1, 100, replace=TRUE, prob=w)
+S1r = sample(S1, 100, TRUE, prob=w)
+
+# 2nd moment
+Tr2 = Tr1r + rnorm(100)
+S2 = -S1r + rnorm(100) 
+
+# data vs particles
+plot(data[2],pch=19,col="red",cex=1.5)
+points(x=rep(1,100),y=Tr2+S2+rnorm(100))
+
+# update weights
+w = dnorm(data[2]-Tr2-S2)
+w = w/sum(w)
+
+# resample
+Tr2r = sample(Tr2, 100, replace=TRUE, prob=w)
+S2r = sample(S2, 100, TRUE, prob=w)
+
+# 3rd moment
+Tr3 = Tr2r + rnorm(100)
+S3 = -S1r -S2r + rnorm(100) 
+
+# data vs particles
+plot(data[3],pch=19,col="red",cex=1.5,ylim=c(-3.5,10.5))
+points(x=rep(1,100),y=Tr3+S3+rnorm(100),ylim=c(-3.5,10.5))
+
+## try boxplot
+boxplot(Tr3+S3+rnorm(100),ylim=c(-3.5, 12))
+points(data[3],pch=19,col="red",cex=1.5)
+# update weights
+w = dnorm(data[3]-Tr3-S3)
+w = w/sum(w)
+
+# resample
+Tr3r = sample(Tr3, 100, replace=TRUE, prob=w)
+S3r = sample(S3, 100, TRUE, prob=w)
+
+# put the first three moments' particles together
+dataparticle_3 = as.matrix(data.frame(c(rep(1,100),rep(2,100),rep(3,100)),c(Tr1+S1+rnorm(100),Tr2+S2+rnorm(100),Tr3+S3+rnorm(100))))
+colnames(dataparticle_3) <- c("t","particles")
+
+# plot
+boxplot(particles~t, data=dataparticle_3,ylim=c(-4,14))
+points(x=c(data[1:3]),pch=19,col="red",cex=1.5)
+
+
+```
+Like what Aaron said, since our particles' fluctuation is too small, we can enlarge the deviation of our proposal. Let's try:
+```{r}
+set.seed(1)
+# 1st moment
+# generate particles
+Tr1 = data[1] + rnorm(100,sd=5)
+S1 = rnorm(100,sd=5) # I just realized why don't I use the seasonal data from *seas* as my initial? Try later.
+
+# data vs particles
+plot(data[1],pch=19,col="red",cex=1.5)
+points(x=rep(1,100),y=Tr1+S1+rnorm(100,sd=5))
+
+# update weights
+w = dnorm(data[1]-Tr1-S1)
+w = w/sum(w)
+
+# resample
+Tr1r = sample(Tr1, 100, replace=TRUE, prob=w)
+S1r = sample(S1, 100, TRUE, prob=w)
+
+# 2nd moment
+Tr2 = Tr1r + rnorm(100,sd=5)
+S2 = -S1r + rnorm(100,sd=5) 
+
+# data vs particles
+plot(data[2],pch=19,col="red",cex=1.5)
+points(x=rep(1,100),y=Tr2+S2+rnorm(100,sd=5))
+
+# update weights
+w = dnorm(data[2]-Tr2-S2)
+w = w/sum(w)
+
+# resample
+Tr2r = sample(Tr2, 100, replace=TRUE, prob=w)
+S2r = sample(S2, 100, TRUE, prob=w)
+
+# 3rd moment
+Tr3 = Tr2r + rnorm(100,sd=5)
+S3 = -S1r -S2r + rnorm(100,sd=5) 
+
+# data vs particles
+plot(data[3],pch=19,col="red",cex=1.5,ylim=c(-3.5,10.5))
+points(x=rep(1,100),y=Tr3+S3+rnorm(100,sd=5),ylim=c(-3.5,10.5))
+
+## try boxplot
+boxplot(Tr3+S3+rnorm(100,sd=5),ylim=c(-3.5, 12))
+points(data[3],pch=19,col="red",cex=1.5)
+
+# update weights
+w = dnorm(data[3]-Tr3-S3)
+w = w/sum(w)
+
+# resample
+Tr3r = sample(Tr3, 100, replace=TRUE, prob=w)
+S3r = sample(S3, 100, TRUE, prob=w)
+
+# put the first three moments' particles together
+dataparticle_3 = as.matrix(data.frame(c(rep(1,100),rep(2,100),rep(3,100)),c(Tr1+S1+rnorm(100,sd=5),Tr2+S2+rnorm(100,sd=5),Tr3+S3+rnorm(100,sd=5))))
+colnames(dataparticle_3) <- c("t","particles")
+
+# plot
+
+boxplot(particles~t, data=dataparticle_3)
+
+boxplot(particles~t, data=dataparticle_3,ylim=c(-20,40))
+points(x=c(data[1:3]),pch=19,col="red",cex=1.5)
+
+```
+当我们把gaussian dist'n的标准差改成5之后，效果似乎好了一些。   
+现在尝试一下增加粒子数量的效果怎么样，虽然我感觉相比最开始不会发生太多变化：
+```{r}
+set.seed(1)
+# 1st moment
+# generate particles
+Tr1 = data[1] + rnorm(1000)
+S1 = rnorm(1000) # I just realized why don't I use the seasonal data from *seas* as my initial? Try later.
+
+# data vs particles
+plot(data[1],pch=19,col="red",cex=1.5)
+points(x=rep(1,1000),y=Tr1+S1+rnorm(1000))
+
+# update weights
+w = dnorm(data[1]-Tr1-S1)
+w = w/sum(w)
+
+# resample
+Tr1r = sample(Tr1, 1000, replace=TRUE, prob=w)
+S1r = sample(S1, 1000, TRUE, prob=w)
+
+# 2nd moment
+Tr2 = Tr1r + rnorm(1000)
+S2 = -S1r + rnorm(1000) 
+
+# data vs particles
+plot(data[2],pch=19,col="red",cex=1.5)
+points(x=rep(1,1000),y=Tr2+S2+rnorm(1000))
+
+# update weights
+w = dnorm(data[2]-Tr2-S2)
+w = w/sum(w)
+
+# resample
+Tr2r = sample(Tr2, 1000, replace=TRUE, prob=w)
+S2r = sample(S2, 1000, TRUE, prob=w)
+
+# 3rd moment
+Tr3 = Tr2r + rnorm(1000)
+S3 = -S1r -S2r + rnorm(1000) 
+
+# data vs particles
+plot(data[3],pch=19,col="red",cex=1.5,ylim=c(-3.5,10.5))
+points(x=rep(1,1000),y=Tr3+S3+rnorm(1000),ylim=c(-3.5,10.5))
+
+## try boxplot
+boxplot(Tr3+S3+rnorm(1000),ylim=c(-3.5, 12))
+points(data[3],pch=19,col="red",cex=1.5)
+# update weights
+w = dnorm(data[3]-Tr3-S3)
+w = w/sum(w)
+
+# resample
+Tr3r = sample(Tr3, 1000, replace=TRUE, prob=w)
+S3r = sample(S3, 1000, TRUE, prob=w)
+
+# put the first three moments' particles together
+dataparticle_3 = as.matrix(data.frame(c(rep(1,1000),rep(2,1000),rep(3,1000)),c(Tr1+S1+rnorm(1000),Tr2+S2+rnorm(1000),Tr3+S3+rnorm(1000))))
+colnames(dataparticle_3) <- c("t","particles")
+
+# plot
+boxplot(particles~t, data=dataparticle_3,ylim=c(-4,14))
+points(x=c(data[1:3]),pch=19,col="red",cex=1.5)
+
+```
+
+Try to enlarge the deviation and # of particles at the same time
+```{r}
+set.seed(1)
+# 1st moment
+# generate particles
+Tr1 = data[1] + rnorm(1000,sd=5)
+S1 = rnorm(1000,sd=5) # I just realized why don't I use the seasonal data from *seas* as my initial? Try later.
+
+# data vs particles
+plot(data[1],pch=19,col="red",cex=1.5)
+points(x=rep(1,1000),y=Tr1+S1+rnorm(1000,sd=5))
+
+# update weights
+w = dnorm(data[1]-Tr1-S1)
+w = w/sum(w)
+
+# resample
+Tr1r = sample(Tr1, 1000, replace=TRUE, prob=w)
+S1r = sample(S1, 1000, TRUE, prob=w)
+
+# 2nd moment
+Tr2 = Tr1r + rnorm(1000,sd=5)
+S2 = -S1r + rnorm(1000,sd=5) 
+
+# data vs particles
+plot(data[2],pch=19,col="red",cex=1.5)
+points(x=rep(1,1000),y=Tr2+S2+rnorm(1000,sd=5))
+
+# update weights
+w = dnorm(data[2]-Tr2-S2)
+w = w/sum(w)
+
+# resample
+Tr2r = sample(Tr2, 1000, replace=TRUE, prob=w)
+S2r = sample(S2, 1000, TRUE, prob=w)
+
+# 3rd moment
+Tr3 = Tr2r + rnorm(1000,sd=5)
+S3 = -S1r -S2r + rnorm(1000,sd=5) 
+
+# data vs particles
+plot(data[3],pch=19,col="red",cex=1.5,ylim=c(-3.5,10.5))
+points(x=rep(1,1000),y=Tr3+S3+rnorm(1000,sd=5),ylim=c(-3.5,10.5))
+
+## try boxplot
+boxplot(Tr3+S3+rnorm(1000,sd=5),ylim=c(-3.5, 12))
+points(data[3],pch=19,col="red",cex=1.5)
+
+# update weights
+w = dnorm(data[3]-Tr3-S3)
+w = w/sum(w)
+
+# resample
+Tr3r = sample(Tr3, 1000, replace=TRUE, prob=w)
+S3r = sample(S3, 1000, TRUE, prob=w)
+
+# put the first three moments' particles together
+dataparticle_3 = as.matrix(data.frame(c(rep(1,1000),rep(2,1000),rep(3,1000)),c(Tr1+S1+rnorm(1000,sd=5),Tr2+S2+rnorm(1000,sd=5),Tr3+S3+rnorm(1000,sd=5))))
+colnames(dataparticle_3) <- c("t","particles")
+
+# plot
+
+boxplot(particles~t, data=dataparticle_3)
+
+boxplot(particles~t, data=dataparticle_3)
+points(x=c(data[1:3]),pch=19,col="red",cex=1.5)
+
+
+```
+--------------------------------------**UPDATE 6.6**--------------------------------------     
+It seems that our result is becoming better? But remember: our goal is to extract the trend and seasonal component. Let's see whether the new setting works:
+```{r}
+set.seed(1)
+S <- matrix(0,1000,251) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,1000,251)
+Tr[,11] <- data[1]
+component <- c()
+a = 50
+for (i in 12:a) {
+  
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(1000,sd=5)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(1000,sd=5)
+  
+  # update weights
+  w <- dnorm(data[i-11]-Tr[,i]-S[,i])
+  w <- w/sum(w)
+  
+  # evaluate state value
+  t <- sum(w * Tr[,i])
+  s <- sum(w * S[,i])
+  
+  # add to our component path
+  component <- rbind(component, c(t,s))
+  
+  # resample
+  Tr[,i] <- sample(Tr[,i], size =1000, replace = TRUE, prob = w)
+  S[,i] <- sample(S[,i], size = 1000, replace = TRUE, prob = w)
+}
+plot(data[1:(a-11)],type = "l",ylim = c(-60,80),ylab='')
+par(new=TRUE)
+plot(component[,1],type="l",col="green",ylim = c(-60,80),ylab='')
+par(new=TRUE)
+plot(component[,2],type="l",col="blue",ylim = c(-60,80),ylab='')
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,2],type="l",col="red",ylim=c(-60,80),ylab='')
+legend("topleft",c("data","trend","seasonal","deseasoned"),col=c("black","green","blue","red"),lty=c(1,1,1,1))
+
+
+plot(data[1:(a-11)],type = "l",ylim = c(-60,80))
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,2],type="l",col="red",ylim=c(-60,80),ylab='')
+```
+By changing these parameters, the degeneracy phenomenon delays, but it still happens eventually. And the desseasoned curve is obvious not suitable.
+
+well, I still believe there is something wrong in my comprehension of state space models in time series problems.    
+
+I want to keep the deviation of seasonal component equal to 1 and see how about the results:
+```{r}
+set.seed(1)
+S <- matrix(0,1000,251) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,1000,251)
+Tr[,11] <- data[1]
+component <- c()
+a = 45
+for (i in 12:a) {
+  
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(1000,sd=5)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(1000,sd=1)
+  
+  # update weights
+  w <- dnorm(data[i-11]-Tr[,i]-S[,i])
+  w <- w/sum(w)
+  
+  # evaluate state value
+  t <- sum(w * Tr[,i])
+  s <- sum(w * S[,i])
+  
+  # add to our component path
+  component <- rbind(component, c(t,s))
+  
+  # resample
+  Tr[,i] <- sample(Tr[,i], size =1000, replace = TRUE, prob = w)
+  S[,i] <- sample(S[,i], size = 1000, replace = TRUE, prob = w)
+}
+plot(data[1:(a-11)],type = "l",ylim = c(-60,80),ylab='')
+par(new=TRUE)
+plot(component[,1],type="l",col="green",ylim = c(-60,80),ylab='')
+par(new=TRUE)
+plot(component[,2],type="l",col="blue",ylim = c(-60,80),ylab='')
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,2],type="l",col="red",ylim=c(-60,80),ylab='')
+legend("topleft",c("data","trend","seasonal","deseasoned"),col=c("black","green","blue","red"),lty=c(1,1,1,1))
+
+
+plot(data[1:(a-11)],type = "l",ylim = c(-60,80))
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,2],type="l",col="red",ylim=c(-60,80),ylab='')
+```
+If we change the variation of seasonal instead of trend, that is to say, we want our seasonal pattern to be more fluctuant and trend to be gentle. Usually we do not want a quick-changing trend over time... I am not sure... whatever let's try.
+
+```{r}
+set.seed(1)
+S <- matrix(0,1000,251) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,1000,251)
+Tr[,11] <- data[1]
+component <- c()
+a = 35
+for (i in 12:a) {
+  
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(1000,sd=1)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(1000,sd=5)
+  
+  # update weights
+  w <- dnorm(data[i-11]-Tr[,i]-S[,i])
+  w <- w/sum(w)
+  
+  # evaluate state value
+  t <- sum(w * Tr[,i])
+  s <- sum(w * S[,i])
+  
+  # add to our component path
+  component <- rbind(component, c(t,s))
+  
+  # resample
+  Tr[,i] <- sample(Tr[,i], size =1000, replace = TRUE, prob = w)
+  S[,i] <- sample(S[,i], size = 1000, replace = TRUE, prob = w)
+}
+plot(data[1:(a-11)],type = "l",ylim = c(-60,80),ylab='')
+par(new=TRUE)
+plot(component[,1],type="l",col="green",ylim = c(-60,80),ylab='')
+par(new=TRUE)
+plot(component[,2],type="l",col="blue",ylim = c(-60,80),ylab='')
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,2],type="l",col="red",ylim=c(-60,80),ylab='')
+legend("topleft",c("data","trend","seasonal","deseasoned"),col=c("black","green","blue","red"),lty=c(1,1,1,1))
+
+
+plot(data[1:(a-11)],type = "l",ylim = c(-60,80))
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,2],type="l",col="red",ylim=c(-60,80),ylab='')
+```
+**comment:** I think the length of data is too short to have a conclusion.   
+
+我们现在纠结没有好的初始值，但是在此之前我们已经完成了**X11 & SEATS**，可以借鉴他们的结果中的seasonal，试一试.   
+review: **data-final(m_seats) or data-final(m_x11)** is the seasonal data
+
+```{r}
+set.seed(1)
+S <- matrix(0,1000,251) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,1000,251)
+Tr[,11] <- data[1]
+S[,1:11] <- rep(as.numeric(data-final(m_x11))[1:11],1000)
+component <- c()
+a = 90
+for (i in 12:a) {
+  
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(1000,sd=5)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(1000,sd=5)
+  
+  # update weights
+  w <- dnorm(data[i-11]-Tr[,i]-S[,i])
+  w <- w/sum(w)
+  
+  # evaluate state value
+  t <- sum(w * Tr[,i])
+  s <- sum(w * S[,i])
+  
+  # add to our component path
+  component <- rbind(component, c(t,s))
+  
+  # resample
+  Tr[,i] <- sample(Tr[,i], size =1000, replace = TRUE, prob = w)
+  S[,i] <- sample(S[,i], size = 1000, replace = TRUE, prob = w)
+}
+plot(data[1:(a-11)],type = "l",ylim = c(-60,250),ylab='')
+par(new=TRUE)
+plot(component[,1],type="l",col="green",ylim = c(-60,250),ylab='')
+par(new=TRUE)
+plot(component[,2],type="l",col="blue",ylim = c(-60,250),ylab='')
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,2],type="l",col="red",ylim=c(-60,250),ylab='')
+legend("topleft",c("data","trend","seasonal","deseasoned"),col=c("black","green","blue","red"),lty=c(1,1,1,1))
+
+
+plot(data[1:(a-11)],type = "l",ylim = c(-60,250))
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,2],type="l",col="red",ylim=c(-60,250),ylab='')
+```
+
+
+--------------------------------------**UPDATE 6.5**--------------------------------------
+
+I tried to search something related with initialization today, and fortunately I did find something that could be helpful. It is the *Chapter 6* of BOOK Time series analysis by state space methods. I think I will come back to solve the initialization problem after reading some content of that chapter.
+
+
+
+
+
+
+
+
+
+
+

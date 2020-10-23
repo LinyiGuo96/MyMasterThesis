@@ -1,0 +1,173 @@
+---
+title: "Simulation"
+author: "Linyi Guo"
+date: "2019/12/16"
+output: 
+  html_document:
+    toc: true
+---
+
+I have read a lot of(perhaps...) materials recently. 
+
+Well the feeling is good but I am afraid to deviate my main research. Doing some programming in this process would be helpful definitely.
+
+Something to remember at first:
+
+* Believe what you are doing for now is correct;
+
+* Keep your purpose in mind;
+
+* Test your guess through the truth came from programming.
+
+<center>**___________________________________________________________________________**</center>
+
+# Why do we need to simulate more datasets?
+
+One thing I am sure so far is that we need more datasets to build sensible empirical priors!
+
+Maybe we could use the datasets from Statcan?... 
+
+
+# Import 
+
+```{r include=FALSE}
+rm(list=ls())
+set.seed(9483)
+```
+
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+library(forecast)
+library(ggplot2)
+library(plotly)
+```
+
+```{r include=FALSE}
+Data <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan & reference\\retailtrade data\\retailtrade1.csv', header = FALSE)
+
+head(Data)
+
+Data <- Data[-1,-1]
+
+rownames(Data) <- c()
+
+head(Data)
+
+```
+
+
+
+```{r echo=TRUE}
+rowData <- Data[-1, seq(1,46,2)]
+head(rowData)
+
+
+```
+
+```{r}
+indx <- sapply(rowData, is.factor)
+rowData[indx] <- lapply(rowData[indx], function(x)
+  as.numeric(gsub(",","",as.character(x))))
+
+head(rowData)
+```
+
+
+# Create more datasets
+</br>
+
+```{r}
+rowData2 <- rowData * 5 # create new datasets with larger scale
+
+rowData3 <- rowData * 0.5 # smaller scale
+```
+
+Cause I want to create more datasets at longer/shoter length, so I need to build arima models on existing datasets and forecast the future values:
+
+```{r}
+
+rowts <- lapply(1:23,function(i) 
+  ts(rowData[,i], start=c(2004,1), frequency=12) )
+
+rowts2 <- lapply(1:23, function(i) 
+  ts(rowData2[,i], start=c(2004,1), frequency=12) )
+
+rowts3 <- lapply(1:23, function(i)
+  ts(rowData3[,i], start=c(2004,1), frequency=12) )
+
+```
+
+```{r}
+
+arimalist1 <- lapply(1:23, function(i) auto.arima(rowts[[i]]))
+
+forecastlist1 <- lapply(arimalist1, function(x) forecast(x, h=120))
+
+# forecastlist1[[1]]$mean is the prediction
+
+# build longer datasets
+
+rowts4 <- lapply(1:23, function(i) 
+  ts(c(rowts[[i]], forecastlist1[[i]]$mean), start = start(rowts[[i]]), frequency = 12))
+
+```
+
+# Processing
+</br>
+
+I already have 4 groups of datasets and now I need to processing them into the expression that I want, that is:
+
+* No outliers;
+
+* Addictive models.
+
+```{r}
+# build models on 4 different groups
+x11list1 <- lapply(rowts, function(x) seas(x, x11=''))
+x11list2 <- lapply(rowts2, function(x) seas(x, x11=''))
+x11list3 <- lapply(rowts3, function(x) seas(x, x11=''))
+x11list4 <- lapply(rowts4, function(x) seas(x, x11=''))
+
+# remove outliers
+tslist1 <- lapply(x11list1, function(x) series(x, 'b1'))
+tslist2 <- lapply(x11list2, function(x) series(x, 'b1'))
+tslist3 <- lapply(x11list3, function(x) series(x, 'b1'))
+tslist4 <- lapply(x11list4, function(x) series(x, 'b1'))
+```
+
+Until this step, 'tslist' is free from outliers. Then we need to detect whether they need to take log or not. If so, I am going to use the transformed version:</br>
+
+```{r}
+# new x11 list
+x11list1 <- lapply(tslist1, function(x) seas(x, x11=''))
+x11list2 <- lapply(tslist2, function(x) seas(x, x11=''))
+x11list3 <- lapply(tslist3, function(x) seas(x, x11=''))
+x11list4 <- lapply(tslist4, function(x) seas(x, x11=''))
+
+# define a function to use later
+logtransform <- function(seas) { 
+  
+  if(transformfunction(seas) == 'log') ts <- log(seas$x)
+  
+  else ts <- seas$x
+  
+  return(ts)
+}
+
+# transform data if needed
+tslist1_add <- lapply(x11list1, logtransform)
+tslist2_add <- lapply(x11list2, logtransform)
+tslist3_add <- lapply(x11list3, logtransform)
+tslist4_add <- lapply(x11list4, logtransform)
+
+```
+
+
+
+
+
+
+
+
+

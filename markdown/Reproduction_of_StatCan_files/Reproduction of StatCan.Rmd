@@ -1,0 +1,309 @@
+---
+title: "Reproduction of StatCan"
+author: "LinyiGuo"
+date: "2019/8/20"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r}
+rm(list = ls())
+options(digits = 4)
+set.seed(9483)
+```
+
+# Import data and load packages
+
+```{r}
+library(ggfortify)
+library(forecast)
+library(KFAS)
+library(tseries)
+library(gridExtra)
+library(seasonal)
+
+# Load Data
+data_nike <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\nike.csv',header = TRUE)
+data_adi <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\adidas.csv',header = TRUE)
+
+data_nike <- ts(rev(data_nike[3:58,2]), frequency=4, start=c(2005,1))
+data_adi <- ts(rev(data_adi[2:57,2]), frequency=4, start=c(2005,1))
+data("AirPassengers")
+data_ap <- AirPassengers
+
+# visualize data
+plot(data_nike,ylab='',main="Nike Quarterly Sales from 2005 to 2018")
+plot(data_adi,ylab='',main="Adidas Quarterly Sales from 2005 to 2018")
+plot(data_ap,ylab='',main="Air Passengers from 1949 to 1960")
+plot(log(data_ap),ylab='',main="Log of Air Passengers from 1949 to 1960")
+
+```
+
+
+# Construct Models
+
+```{r}
+# nike
+## build TRAMO-SEATS
+mod_nike_seats <- seas(data_nike)
+
+## build x-11
+mod_nike_x11 <- seas(data_nike, x11='')
+
+## build ssm
+mod_nike_ssm <- SSModel(data_nike ~ SSMtrend(1, Q = list(1)) + 
+                        SSMseasonal(4,Q=0.1, sea.type = "trigonometric"), H=1)
+out_nike_ssm <- KFS(mod_nike_ssm)
+
+
+# adi
+## build TRAMO-SEATS
+mod_adi_seats <- seas(data_adi)
+
+## build x-11
+mod_adi_x11 <- seas(data_adi, x11='')
+
+## build ssm
+mod_adi_ssm <- SSModel(data_adi ~ SSMtrend(1, Q = list(1)) + 
+                        SSMseasonal(4,Q=0.1, sea.type = "trigonometric"), H=1)
+out_adi_ssm <- KFS(mod_adi_ssm)
+
+
+# airpassengers
+## build TRAMO-SEATS
+mod_ap_seats <- seas(data_ap)
+
+## build x-11
+mod_ap_x11 <- seas(data_ap, x11='')
+
+## build ssm
+mod_ap_ssm <- SSModel(log(data_ap) ~ SSMtrend(1, Q = list(1)) + 
+                        SSMseasonal(12,Q=0.1, sea.type = "trigonometric"), H=1)
+out_ap_ssm <- KFS(mod_ap_ssm)
+
+```
+
+# Seasonal adjustment 
+
+```{r echo=FALSE}
+# nike
+plot(series(mod_nike_seats,"s11"),ylab='',ylim=c(3000,10000))
+par(new=TRUE)
+plot(series(mod_nike_x11,"d11"),ylab='',ylim=c(3000,10000),col=2,lty=2)
+par(new=TRUE)
+plot(data_nike-rowSums(coef(out_nike_ssm,states = 'seasonal')[,c(1,3)]),
+     ylab='',ylim=c(3000,10000),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal adjusted results of Nike quarterly sales data from 2005 to 2018')
+
+# adi
+plot(series(mod_adi_seats,"s11"),ylab='',ylim=c(1000,7000))
+par(new=TRUE)
+plot(series(mod_adi_x11,"d11"),ylab='',ylim=c(1000,7000),col=2,lty=2)
+par(new=TRUE)
+plot(data_adi-rowSums(coef(out_adi_ssm,states = 'seasonal')[,c(1,3)]),
+     ylab='',ylim=c(1000,7000),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal adjusted results of Adidas quarterly sales data from 2005 to 2018')
+
+# airpassengers
+plot(series(mod_ap_seats,"s11"),ylab='',ylim=c(100,500))
+par(new=TRUE)
+plot(series(mod_ap_x11,"d11"),ylab='',ylim=c(100,500),col=2,lty=2)
+par(new=TRUE)
+plot(exp(log(data_ap)-
+       rowSums(coef(out_ap_ssm,states = 'seasonal')[,c(1,3,5,7,9,11)])),
+     ylab='',ylim=c(100,500),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal adjusted results of air passengers from 1949 to 1960')
+```
+
+# Trend
+
+```{r echo=FALSE}
+# nike
+plot(series(mod_nike_seats,"s12"),ylab='',ylim=c(3000,10000))
+par(new=TRUE)
+plot(series(mod_nike_x11,"d12"),ylab='',ylim=c(3000,10000),col=2,lty=2)
+par(new=TRUE)
+plot(coef(out_nike_ssm,states = 'trend'),
+     ylab='',ylim=c(3000,10000),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Trend component of Nike quarterly sales data from 2005 to 2018')
+
+# adi
+plot(series(mod_adi_seats,"s12"),ylab='',ylim=c(1000,7000))
+par(new=TRUE)
+plot(series(mod_adi_x11,"d12"),ylab='',ylim=c(1000,7000),col=2,lty=2)
+par(new=TRUE)
+plot(coef(out_adi_ssm,states = 'trend'),
+     ylab='',ylim=c(1000,7000),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Trend component of Adidas quarterly sales data from 2005 to 2018')
+
+# airpassengers
+plot(series(mod_ap_seats,"s12"),ylab='',ylim=c(100,500))
+par(new=TRUE)
+plot(series(mod_ap_x11,"d12"),ylab='',ylim=c(100,500),col=2,lty=2)
+par(new=TRUE)
+plot(coef(out_ap_ssm,states = 'trend'),
+     ylab='',ylim=c(100,500),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Trend component of air passengers from 1949 to 1960')
+
+```
+
+# Seasonal
+
+```{r echo=FALSE}
+# nike
+plot(series(mod_nike_seats,"s10"),ylab='',ylim=c(-400,500))
+par(new=TRUE)
+plot(series(mod_nike_x11,"d10"),ylab='',ylim=c(-400,500),col=2,lty=2)
+par(new=TRUE)
+plot(ts(rowSums(coef(out_nike_ssm,states = 'seasonal')[,c(1,3)]),
+        frequency = 4, start = c(2005,1)),
+     ylab='',ylim=c(-400,500),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal influence of Nike quarterly sales data from 2005 to 2018')
+
+# adi
+plot(series(mod_adi_seats,"s10"),ylab='',ylim=c(-700,700))
+par(new=TRUE)
+plot(series(mod_adi_x11,"d10"),ylab='',ylim=c(-700,700),col=2,lty=2)
+par(new=TRUE)
+plot(ts(rowSums(coef(out_adi_ssm,states = 'seasonal')[,c(1,3)]),
+        frequency = 4, start = c(2005,1)),
+     ylab='',ylim=c(-700,700),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal influence of Adidas quarterly sales data from 2005 to 2018')
+
+# airpassengers
+plot(series(mod_ap_seats,"s10"),ylab='',ylim=c(0.7,1.4))
+par(new=TRUE)
+plot(series(mod_ap_x11,"d10"),ylab='',ylim=c(0.7,1.4),col=2,lty=2)
+par(new=TRUE)
+plot(ts(exp(rowSums(coef(out_ap_ssm,states = 'seasonal')[,c(1,3,5,7,9,11)])),
+        frequency = 12, start = c(1949,1)),
+     ylab='',ylim=c(0.7,1.4),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal influence of air passengers from 2005 to 2018')
+
+```
+
+# Residuals
+
+```{r echo=FALSE}
+# nike
+plot(series(mod_nike_seats,"s13"),ylab='',ylim=c(-650,300))
+par(new=TRUE)
+plot(series(mod_nike_x11,"d13"),ylab='',ylim=c(-650,300), col=2,lty=2)
+par(new=TRUE)
+plot(residuals(out_nike_ssm,"response"),
+     ylab='',ylim=c(-650,300),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Residuals of Nike quarterly sales data from 2005 to 2018')
+
+# adi
+plot(series(mod_adi_seats,"s13"),ylab='',ylim=c(-200,180))
+par(new=TRUE)
+plot(series(mod_adi_x11,"d13"),ylab='',ylim=c(-200,180), col=2,lty=2)
+par(new=TRUE)
+plot(residuals(out_adi_ssm,"response"),
+     ylab='',ylim=c(-200,180),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Residuals of Adidas quarterly sales data from 2005 to 2018')
+
+# air passengers
+plot(series(mod_ap_seats,"s13"),ylab='',ylim=c(0.94,1.11))
+par(new=TRUE)
+plot(series(mod_ap_x11,"d13"),ylab='',ylim=c(0.94,1.11),col=2,lty=2)
+par(new=TRUE)
+plot(exp(residuals(out_ap_ssm,"response")),
+     ylab='',ylim=c(0.94,1.11),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Residuals of air passengers from 1949 to 1960')
+
+```
+
+# Different Situations
+
+## Small residuals
+
+The residuals of ssm from statcan is almost invariant so we can realize it by forcing `H` in `SSModel` to be 0(or some very very small number, like 0.0001).
+
+```{r}
+mod_nike_nonoi <- SSModel(data_nike ~ SSMtrend(1, Q = list(1)) + 
+                            SSMseasonal(4, Q = 0.1, "trigonometric"), 
+                          H = 0)
+out_nike_nonoi <- KFS(mod_nike_nonoi)
+
+# plot residuals
+plot(series(mod_nike_seats,"s13"),ylab='',ylim=c(-650,300))
+par(new=TRUE)
+plot(series(mod_nike_x11,"d13"),ylab='',ylim=c(-650,300), col=2,lty=2)
+par(new=TRUE)
+plot(residuals(out_nike_nonoi,"response"),
+     ylab='',ylim=c(-650,300),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm(nonoise)'),col=c(1,2,3),lty=c(1,2,4))
+title('Residuals of Nike quarterly sales data from 2005 to 2018')
+
+
+# check the trend and seasonal
+## trend
+plot(series(mod_nike_seats,"s12"),ylab='',ylim=c(3000,10000))
+par(new=TRUE)
+plot(series(mod_nike_x11,"d12"),ylab='',ylim=c(3000,10000), col=2,lty=2)
+par(new=TRUE)
+plot(coef(out_nike_nonoi,states="trend"),
+     ylab='',ylim=c(3000,10000),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm(nonoise)'),col=c(1,2,3),lty=c(1,2,4))
+title('Trends of Nike quarterly sales data from 2005 to 2018')
+
+## seasonal
+plot(series(mod_nike_seats,"s10"),ylab='',ylim=c(-400,500))
+par(new=TRUE)
+plot(series(mod_nike_x11,"d10"),ylab='',ylim=c(-400,500), col=2,lty=2)
+par(new=TRUE)
+plot(ts(rowSums(coef(out_nike_nonoi,states = 'seasonal')[,c(1,3)]),
+        frequency = 4, start = c(2005,1)),
+     ylab='',ylim=c(-400,500),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm(nonoise)'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal component of Nike quarterly sales data from 2005 to 2018')
+
+```
+```{r include=FALSE}
+rowSums(coef(out_nike_nonoi)[,c(1,2,4)]) - data_nike
+rowSums(coef(out_nike_ssm)[,c(1,2,4)])+residuals(out_nike_ssm)-data_nike
+rowSums(coef(out_ap_ssm)[,c(1,2,4,6,8,10,12)])+residuals(out_ap_ssm)-data_ap
+
+rowSums(series(mod_nike_seats,c('s10','s12','s13'))) - data_nike
+rowSums(series(mod_adi_seats,c('s10','s12','s13'))) - data_adi
+plot(rowSums(series(mod_ap_seats,c('s10','s12','s13'))) - data_ap)
+
+residuals(out_nike_ssm,"recursive")
+residuals(out_nike_nonoi,"recursive")
+summary(mod_nike_seats)
+summary(mod_nike_x11)
+summary(seas(data_nike,outlier = NULL))
+summary(seas(data_nike,x11='',outlier = NULL))
+summary(mod_ap_seats)
+
+```
+
+
+## Plot the proportion of each component for the whole the movement
+
+The expression from statcan to calculate the proportion is $$SEAS=\frac{\sum_{t=2}^N((y_t-S_t)-(y_{t-1}-S_{t-1}))^2}{\sum_{t=2}^N(y_t-y_{t-1})^2}$$ And the absorption of trend and irregular is calculated by further removing the appropriate component from each term.
+
+which means the proportion of trend will be $$TREND=\frac{\sum_{t=2}^N((y_t-S_t-T_t)-(y_{t-1}-S_{t-1}-T_{t-1}))^2}{\sum_{t=2}^N(y_t-y_{t-1})^2}$$
+
+Personally I don't think it's correct. 
+
+**So we need another method to measure this kind proportion**
+
+
+
+
+
+

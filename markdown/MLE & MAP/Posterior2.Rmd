@@ -1,0 +1,873 @@
+---
+title: "Posterior2"
+author: "Linyi Guo"
+date: "2019/11/19"
+output: 
+  html_document:
+    toc: true
+  pdf_document:
+    toc: true
+---
+
+It is time to explore the choice of our prior now! 
+
+Hope I can find something this afternoon:)
+
+```{r include=FALSE}
+rm(list=ls())
+set.seed(9483)
+```
+
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+library(ggplot2)
+library(plotly)
+```
+
+```{r include=FALSE}
+Data1 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\total.csv')
+Data2 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\automobile.csv')
+Data3 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Automotive parts.csv')
+Data4 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Clothing stores.csv')
+Data5 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\furnishings.csv')
+Data6 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Beer, wine and liquor stores.csv')
+Data7 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Grocery stores.csv')
+Data8 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Health and personal care stores.csv')
+Data9 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\motor.csv')
+Data10 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Sporting goods, hobby, book and music stores.csv')
+
+data1 <- ts(Data1[,1], start=c(2004,01), frequency=12)
+data2 <- ts(Data2[,1], start=c(2004,01), frequency=12)
+data3 <- ts(Data3[,1], start=c(2004,01), frequency=12)
+data4 <- ts(Data4[,1], start=c(2004,01), frequency=12)
+data5 <- ts(Data5[,1], start=c(2004,01), frequency=12)
+data6 <- ts(Data6[,1], start=c(2004,01), frequency=12)
+data7 <- ts(Data7[,1], start=c(2004,01), frequency=12)
+data8 <- ts(Data8[,1], start=c(2004,01), frequency=12)
+data9 <- ts(Data9[,1], start=c(2004,01), frequency=12)
+data10 <- ts(Data10[,1], start=c(2004,01), frequency=12)
+
+data1_x11 <- seas(data1, x11='')
+data2_x11 <- seas(data2, x11='')
+data3_x11 <- seas(data3, x11='')
+data4_x11 <- seas(data4, x11='')
+data5_x11 <- seas(data5, x11='')
+data6_x11 <- seas(data6, x11='')
+data7_x11 <- seas(data7, x11='')
+data8_x11 <- seas(data8, x11='')
+data9_x11 <- seas(data9, x11='')
+data10_x11 <- seas(data10, x11='')
+
+data1 <- series(data1_x11, 'b1')
+data2 <- series(data2_x11, 'b1')
+data3 <- series(data3_x11, 'b1')
+data4 <- series(data4_x11, 'b1')
+data5 <- series(data5_x11, 'b1')
+data6 <- series(data6_x11, 'b1')
+data7 <- series(data7_x11, 'b1')
+data8 <- series(data8_x11, 'b1')
+data9 <- series(data9_x11, 'b1')
+data10 <- series(data10_x11, 'b1')
+
+data1_x11 <- seas(data1, x11='')
+data2_x11 <- seas(data2, x11='')
+data3_x11 <- seas(data3, x11='')
+data4_x11 <- seas(data4, x11='')
+data5_x11 <- seas(data5, x11='')
+data6_x11 <- seas(data6, x11='')
+data7_x11 <- seas(data7, x11='')
+data8_x11 <- seas(data8, x11='')
+data9_x11 <- seas(data9, x11='')
+data10_x11 <- seas(data10, x11='')
+```
+# Normal cases
+
+# Improved stupid prior
+
+Remember our former log-prior is an improper exponential prior as following:
+$$logPrior=-c1*\sigma_y^2-c2*\sigma_T^2$$
+where c1 and c2 are constants. 
+
+Now I want to put something **related to the data** into c1&c2. 
+
+Well c1 and c2 are slopes actually. I drew a draft of the loglikelihood and prior in one dimension:
+
+<center> ![](C:\\Users\\GuoLY\\Desktop\\markdown\\MLE & MAP\\plots\\prior1improved.jpg) </center>
+</br>
+
+As we know the other two variances are usually greater than 1, so we could take the slopes of the steepest line and the evenest line as our upper and lower limits. Suppose the steepest line is corresponding to **(1,loglikelihood(1))**.
+
+
+~~讲个题外话，实在憋得有点难受。我现在有个很general的问题：既然我用exhaustion可以找到一个很好的variance那我为啥费这么多事探索贝叶斯？要知道用bayesian最终也是为了得到一个近似于exhaustion‘s output。另外一点：在探索贝叶斯的时候，我还是要用穷举（exhaustion）的方法，感觉实在有些舍近求远了。~~
+
+~~我承认贝叶斯牛逼，是比穷举这种谁都能做的方法高级一些，但是牛逼又不能当饭吃。就目前来说，贝叶斯跑起来的时间更长，效果也更差。当然，不排除是因为我的prior不够好的原因。~~
+
+~~可以回头找Aaron聊一聊。当然可能我做着做着就想到贝叶斯的advantage了。~~
+
+</br>
+
+*F**k, 以后不再图省事在图书馆吃饭了。哎，浪费的时间更长而且饭也吃不安生。生怕吃饭声音太大影响不好。现在还感觉胀气了。真的是天秀。*
+
+*Back to prior*
+
+我目前的idea是把上面提到了这两个limit之间的间隔等分成10份，比如每份记为p，然后c1&c2就依次取p,2p,3p,...10p,注意我们的p的大小是由数据本身决定的。Our log-prior is actually is:
+$$logPrior=-c1*p*\sigma_y^2-c2*p*\sigma_T^2$$
+where $$p=\frac{|\frac{max(loglikelihood)}{max(variance)}-\frac{loglikelihood(1,1)}{1}|}{10}$$
+
+**Problem: if p is determined by our data then that is to say our prior is related to our data!**
+
+Let's define the functions that we need:
+
+```{r}
+Dif1 <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_irregular <- data[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+ 
+  D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+    sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+
+loglikelihood <- function(data, trend, season, sigma){
+  
+  n <- length(data)
+  a <- 0
+  for (i in 12:n)  a <- a + (sum(season[(i-11):i]))^2
+  l <- -(n-11)/2 * log(sigma[1]) - 
+    (n-11)/2 * log(sigma[2]) - (n-11)/2 * log(sigma[3]) -
+    sum((data[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/(2*sigma[1]) - 
+    sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/(2*sigma[2]) - 
+    a / (2*sigma[3])
+  return(l)
+  
+}
+
+logprior2 <- function(sigma,c1,c2,p){
+  return(-c1*p*sigma[1]- c2*p*sigma[2])
+}
+
+logposterior2_matrix <- function(data, c1, c2, p){
+  LP <- c()
+  index <- c()
+   for (i in 1:15) {
+     for (j in 1:15) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i, j, 1)
+         
+         lp <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma) + logprior2(sigma, c1, c2,p)
+         LP <- c(LP, lp)
+         index <- rbind(index, sigma)
+         
+      }
+   }
+  df <- data.frame(variance=index, logposterior=LP)
+  return(df)
+}
+```
+
+Let's define a stupid function at first(there is one code 'lapply()' but I haven't figured out how I could use it for my purpose):
+
+```{r}
+Prior2_gridsearch <- function(dataset1,dataset2,dataset3){
+  Error <- c()
+  index <- c()
+  dataset1_x11 <- seas(dataset1,x11='')
+  dataset2_x11 <- seas(dataset2,x11='')
+  dataset3_x11 <- seas(dataset3,x11='')
+  
+  # p1
+  dataset1_ssmm_50 <- SSModel(dataset1 ~ SSMtrend(1, Q=list(50)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 50)
+  dataset1_ssm_50 <- KFS(dataset1_ssmm_50)
+  dataset1_ssm_trend50 <- coef(dataset1_ssm_50, states='trend')
+  dataset1_ssm_seasonal50 <- - rowSums(coef(dataset1_ssm_50,states='seasonal'))
+  
+  
+  dataset1_ssmm_1 <- SSModel(dataset1 ~ SSMtrend(1, Q=list(1)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 1)
+  dataset1_ssm_1 <- KFS(dataset1_ssmm_1)
+  dataset1_ssm_trend1 <- coef(dataset1_ssm_1, states='trend')
+  dataset1_ssm_seasonal1 <- - rowSums(coef(dataset1_ssm_1,states='seasonal'))
+  
+  p1 <- (loglikelihood(dataset1,dataset1_ssm_trend50,dataset1_ssm_seasonal50,c(50,50,1))/50 - loglikelihood(dataset1,dataset1_ssm_trend1,dataset1_ssm_seasonal1,c(1,1,1))) / 10
+  
+  # p2
+  dataset2_ssmm_50 <- SSModel(dataset2 ~ SSMtrend(1, Q=list(50)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 50)
+  dataset2_ssm_50 <- KFS(dataset2_ssmm_50)
+  dataset2_ssm_trend50 <- coef(dataset2_ssm_50, states='trend')
+  dataset2_ssm_seasonal50 <- - rowSums(coef(dataset2_ssm_50,states='seasonal'))
+  
+  
+  dataset2_ssmm_1 <- SSModel(dataset2 ~ SSMtrend(1, Q=list(1)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 1)
+  dataset2_ssm_1 <- KFS(dataset2_ssmm_1)
+  dataset2_ssm_trend1 <- coef(dataset2_ssm_1, states='trend')
+  dataset2_ssm_seasonal1 <- - rowSums(coef(dataset2_ssm_1,states='seasonal'))
+  
+  p2 <- (loglikelihood(dataset2,dataset2_ssm_trend50,dataset2_ssm_seasonal50,c(50,50,1))/50 - loglikelihood(dataset2,dataset2_ssm_trend1,dataset2_ssm_seasonal1,c(1,1,1))) / 10
+  
+  # p3
+  dataset3_ssmm_50 <- SSModel(dataset3 ~ SSMtrend(1, Q=list(50)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 50)
+  dataset3_ssm_50 <- KFS(dataset3_ssmm_50)
+  dataset3_ssm_trend50 <- coef(dataset3_ssm_50, states='trend')
+  dataset3_ssm_seasonal50 <- - rowSums(coef(dataset3_ssm_50,states='seasonal'))
+  
+  
+  dataset3_ssmm_1 <- SSModel(dataset3 ~ SSMtrend(1, Q=list(1)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 1)
+  dataset3_ssm_1 <- KFS(dataset3_ssmm_1)
+  dataset3_ssm_trend1 <- coef(dataset3_ssm_1, states='trend')
+  dataset3_ssm_seasonal1 <- - rowSums(coef(dataset3_ssm_1,states='seasonal'))
+  
+  p3 <- (loglikelihood(dataset3,dataset3_ssm_trend50,dataset3_ssm_seasonal50,c(50,50,1))/50 - loglikelihood(dataset3,dataset3_ssm_trend1,dataset3_ssm_seasonal1,c(1,1,1))) / 10
+  
+  
+  # compute error/loss
+  
+  for (i in 1:10) {
+    for (j in 1:10) {
+      
+      dataset1_postmatrix <- logposterior2_matrix(dataset1,i,j,p1)
+      map1 <- as.numeric(dataset1_postmatrix[which.max(dataset1_postmatrix$logposterior),][-4])
+                                 
+      
+      ssmm1 <- SSModel(dataset1 ~ SSMtrend(1, Q=list(map1[2])) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = map1[1])
+      ssm1 <- KFS(ssmm1)
+      dif1 <- Dif1(dataset1_x11,ssm1,dataset1,map1)
+      
+      
+      dataset2_postmatrix <- logposterior2_matrix(dataset2,i,j,p2)
+      map2 <- as.numeric(dataset2_postmatrix[which.max(dataset2_postmatrix$logposterior),][-4])
+      
+      ssmm2 <- SSModel(dataset2 ~ SSMtrend(1, Q=list(map2[2])) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = map2[1])
+      ssm2 <- KFS(ssmm2)
+      dif2 <- Dif1(dataset2_x11,ssm2,dataset2,map2)
+
+      
+      dataset3_postmatrix <- logposterior2_matrix(dataset3,i,j,p3)
+      map3 <- as.numeric(dataset3_postmatrix[which.max(dataset3_postmatrix$logposterior),][-4])
+      
+      ssmm3 <- SSModel(dataset3 ~ SSMtrend(1, Q=list(map3[2])) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = map3[1])
+      ssm3 <- KFS(ssmm3)
+      dif3 <- Dif1(dataset3_x11,ssm3,dataset3,map3)
+
+      error <- dif1+dif2+dif3
+      Error <- c(Error, error)
+      index <- rbind(index, c(i,j))
+    }
+  }
+  return(data.frame(c1=index[,1],c2=index[,2],Error=Error))
+}
+```
+
+```{r}
+# ignore this part; something is wrong
+
+#c1c2_gridsearch2 <- Prior2_gridsearch(data5,data7,unemp)
+#c1c2_gridsearch2[which.min(c1c2_gridsearch2$Error),]
+```
+
+Alright, my code is running again. I guess it may need some time, 5 mins? I don't know whether this time could work or not, but the result actually doesn't matter a lot. I don't expect my model is perfect this time.
+
+In the other hand, I have **one question**, that is: why don't we find a good c1&c2 for each dataset? cause this would be much accurate!  I **guess**(which is pretty reasonable in my opinion): if there is no general choice for us then it means for each time we need to do a loop on c1&c2, which is very very time-consuming! **Therefore** if we could come up with a good choice of c1&c2 then we just need to compute the corresponding $p$ in our prior distribution and find the $MAP$ estimator that we want.
+
+My code has run for 17 mins :) it seems there is too much computation in it. Oh, my poor computer! (感觉像个？？？)
+
+Well I am a little hungry now. And I just changed the for loop in logposterior from 100 to 50 and run from the beginning. I will go home once I get the output:)
+
+MAMAIPI. 我就不明白了你怎么还在跑。 这尼玛都多久了。SHIT. I will go home at 6:10 no matter whether it finishs or not.
+
+**我感觉我可能需要检查一下这个code 之前也没有跑这么长时间啊 有问题**
+
+我决定拆开一步一步看：先看看p1,p2,p3
+
+```{r}
+ # p1
+  data5_ssmm_50 <- SSModel(data5 ~ SSMtrend(1, Q=list(50)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 50)
+  data5_ssm_50 <- KFS(data5_ssmm_50)
+  data5_ssm_trend50 <- coef(data5_ssm_50, states='trend')
+  data5_ssm_seasonal50 <- - rowSums(coef(data5_ssm_50,states='seasonal'))
+  
+  
+  data5_ssmm_1 <- SSModel(data5 ~ SSMtrend(1, Q=list(1)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 1)
+  data5_ssm_1 <- KFS(data5_ssmm_1)
+  data5_ssm_trend1 <- coef(data5_ssm_1, states='trend')
+  data5_ssm_seasonal1 <- - rowSums(coef(data5_ssm_1,states='seasonal'))
+  
+  p1 <- (loglikelihood(data5,data5_ssm_trend50,data5_ssm_seasonal50,c(50,50,1))/50 - loglikelihood(data5,data5_ssm_trend1,data5_ssm_seasonal1,c(1,1,1))) / 10
+  
+  # p2
+  data7_ssmm_50 <- SSModel(data7 ~ SSMtrend(1, Q=list(50)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 50)
+  data7_ssm_50 <- KFS(data7_ssmm_50)
+  data7_ssm_trend50 <- coef(data7_ssm_50, states='trend')
+  data7_ssm_seasonal50 <- - rowSums(coef(data7_ssm_50,states='seasonal'))
+  
+  
+  data7_ssmm_1 <- SSModel(data7 ~ SSMtrend(1, Q=list(1)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 1)
+  data7_ssm_1 <- KFS(data7_ssmm_1)
+  data7_ssm_trend1 <- coef(data7_ssm_1, states='trend')
+  data7_ssm_seasonal1 <- - rowSums(coef(data7_ssm_1,states='seasonal'))
+  
+  p2 <- (loglikelihood(data7,data7_ssm_trend50,data7_ssm_seasonal50,c(50,50,1))/50 - loglikelihood(data7,data7_ssm_trend1,data7_ssm_seasonal1,c(1,1,1))) / 10
+  
+  # p3
+  unemp_ssmm_50 <- SSModel(unemp ~ SSMtrend(1, Q=list(50)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 50)
+  unemp_ssm_50 <- KFS(unemp_ssmm_50)
+  unemp_ssm_trend50 <- coef(unemp_ssm_50, states='trend')
+  unemp_ssm_seasonal50 <- - rowSums(coef(unemp_ssm_50,states='seasonal'))
+  
+  
+  unemp_ssmm_1 <- SSModel(unemp ~ SSMtrend(1, Q=list(1)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 1)
+  unemp_ssm_1 <- KFS(unemp_ssmm_1)
+  unemp_ssm_trend1 <- coef(unemp_ssm_1, states='trend')
+  unemp_ssm_seasonal1 <- - rowSums(coef(unemp_ssm_1,states='seasonal'))
+  
+  p3 <- (loglikelihood(unemp,unemp_ssm_trend50,unemp_ssm_seasonal50,c(50,50,1))/50 - loglikelihood(unemp,unemp_ssm_trend1,unemp_ssm_seasonal1,c(1,1,1))) / 10
+```
+```{r}
+p1
+p2
+p3
+```
+
+Done with p's. Let's change the loop of c1 and c2 from 1:10 to 1:2 as a simplified version: 
+
+but let's check the logposterior first:
+
+```{r}
+data5_postmatrix <- logposterior2_matrix(data5,1,1,p1)
+map1 <- as.numeric(data5_postmatrix[which.max(data5_postmatrix$logposterior),][-4])
+map1
+
+```
+
+Well, congratulations! We have new trouble now!
+
+We absolutly don't want to see 221 here cause I just let c1=c2=1. If I enlarge c1 and c2 the map value would be 111, worse than 221!
+
+Let's see the result of data7 and unemp:
+
+```{r}
+data7_postmatrix <- logposterior2_matrix(data7,1,1,p2)
+map2 <- as.numeric(data7_postmatrix[which.max(data7_postmatrix$logposterior),][-4])
+map2
+
+unemp_postmatrix <- logposterior2_matrix(unemp,1,1,p3)
+map3 <- as.numeric(unemp_postmatrix[which.max(unemp_postmatrix$logposterior),][-4])
+map3
+```
+
+I am waiting......................................................
+
+Let's see the result of c1=c2=2:
+
+```{r}
+
+data5_postmatrix <- logposterior2_matrix(data5,2,2,p1)
+map1 <- as.numeric(data5_postmatrix[which.max(data5_postmatrix$logposterior),][-4])
+map1
+
+data7_postmatrix <- logposterior2_matrix(data7,2,2,p2)
+map2 <- as.numeric(data7_postmatrix[which.max(data7_postmatrix$logposterior),][-4])
+map2
+
+unemp_postmatrix <- logposterior2_matrix(unemp,2,2,p3)
+map3 <- as.numeric(unemp_postmatrix[which.max(unemp_postmatrix$logposterior),][-4])
+map3
+```
+
+ok, it seems that our prior is not very good. Specifically, the choice of p in our prior is too **LARGE**!!!
+
+I want to check the value of both slopes(our limits) and the loglikelihood:
+
+```{r}
+loglikelihood(data5,data5_ssm_trend50,data5_ssm_seasonal50,c(50,50,1))
+loglikelihood(data5,data5_ssm_trend50,data5_ssm_seasonal50,c(50,50,1))/50
+loglikelihood(data5,data5_ssm_trend1,data5_ssm_seasonal1,c(1,1,1))
+
+loglikelihood(data7,data7_ssm_trend50,data7_ssm_seasonal50,c(50,50,1))
+loglikelihood(data7,data7_ssm_trend50,data7_ssm_seasonal50,c(50,50,1))/50
+loglikelihood(data7,data7_ssm_trend1,data7_ssm_seasonal1,c(1,1,1))
+
+loglikelihood(unemp,unemp_ssm_trend50,unemp_ssm_seasonal50,c(50,50,1))
+loglikelihood(unemp,unemp_ssm_trend50,unemp_ssm_seasonal50,c(50,50,1))/50
+loglikelihood(unemp,unemp_ssm_trend1,unemp_ssm_seasonal1,c(1,1,1))
+```
+
+so the above hand-painted pic is not accurate! Cause the distance between loglikelihood and x-axis is very large!!! 
+
+I want to try the p/10 as new p:
+
+```{r}
+################ p1 ################
+
+  
+  p1 <- (loglikelihood(data5,data5_ssm_trend50,data5_ssm_seasonal50,c(50,50,1))/50 - loglikelihood(data5,data5_ssm_trend1,data5_ssm_seasonal1,c(1,1,1))) / 100
+  
+  
+  
+################ p2 ################
+  
+  
+  
+  p2 <- (loglikelihood(data7,data7_ssm_trend50,data7_ssm_seasonal50,c(50,50,1))/50 - loglikelihood(data7,data7_ssm_trend1,data7_ssm_seasonal1,c(1,1,1))) / 100
+  
+  
+  
+################ p3 ################
+  
+
+  
+  p3 <- (loglikelihood(unemp,unemp_ssm_trend50,unemp_ssm_seasonal50,c(50,50,1))/50 - loglikelihood(unemp,unemp_ssm_trend1,unemp_ssm_seasonal1,c(1,1,1))) / 100
+
+
+```
+
+This is the result of c1=c2=1:
+
+```{r}
+
+data5_postmatrix <- logposterior2_matrix(data5,1,1,p1)
+map1 <- as.numeric(data5_postmatrix[which.max(data5_postmatrix$logposterior),][-4])
+map1
+
+data7_postmatrix <- logposterior2_matrix(data7,1,1,p2)
+map2 <- as.numeric(data7_postmatrix[which.max(data7_postmatrix$logposterior),][-4])
+map2
+
+unemp_postmatrix <- logposterior2_matrix(unemp,1,1,p3)
+map3 <- as.numeric(unemp_postmatrix[which.max(unemp_postmatrix$logposterior),][-4])
+map3
+
+```
+
+This is the result of c1=c2=2:
+
+```{r}
+
+data5_postmatrix <- logposterior2_matrix(data5,2,2,p1)
+map1 <- as.numeric(data5_postmatrix[which.max(data5_postmatrix$logposterior),][-4])
+map1
+
+data7_postmatrix <- logposterior2_matrix(data7,2,2,p2)
+map2 <- as.numeric(data7_postmatrix[which.max(data7_postmatrix$logposterior),][-4])
+map2
+
+unemp_postmatrix <- logposterior2_matrix(unemp,2,2,p3)
+map3 <- as.numeric(unemp_postmatrix[which.max(unemp_postmatrix$logposterior),][-4])
+map3
+```
+
+emmm。。。感觉还是不对啊 不是我想要的...Let's change the denominator of p into 1000:
+
+```{r}
+################ p1 ################
+
+  
+  p1 <- (loglikelihood(data5,data5_ssm_trend50,data5_ssm_seasonal50,c(50,50,1))/50 - loglikelihood(data5,data5_ssm_trend1,data5_ssm_seasonal1,c(1,1,1))) / 1000
+  
+  
+  
+################ p2 ################
+  
+  
+  
+  p2 <- (loglikelihood(data7,data7_ssm_trend50,data7_ssm_seasonal50,c(50,50,1))/50 - loglikelihood(data7,data7_ssm_trend1,data7_ssm_seasonal1,c(1,1,1))) / 1000
+  
+  
+  
+################ p3 ################
+  
+
+  
+  p3 <- (loglikelihood(unemp,unemp_ssm_trend50,unemp_ssm_seasonal50,c(50,50,1))/50 - loglikelihood(unemp,unemp_ssm_trend1,unemp_ssm_seasonal1,c(1,1,1))) / 1000
+
+
+```
+
+This is the result of c1=c2=1:
+
+```{r}
+
+data5_postmatrix <- logposterior2_matrix(data5,1,1,p1)
+map1 <- as.numeric(data5_postmatrix[which.max(data5_postmatrix$logposterior),][-4])
+map1
+
+data7_postmatrix <- logposterior2_matrix(data7,1,1,p2)
+map2 <- as.numeric(data7_postmatrix[which.max(data7_postmatrix$logposterior),][-4])
+map2
+
+unemp_postmatrix <- logposterior2_matrix(unemp,1,1,p3)
+map3 <- as.numeric(unemp_postmatrix[which.max(unemp_postmatrix$logposterior),][-4])
+map3
+
+```
+
+This is the result of c1=c2=2:
+
+```{r}
+
+data5_postmatrix <- logposterior2_matrix(data5,2,2,p1)
+map1 <- as.numeric(data5_postmatrix[which.max(data5_postmatrix$logposterior),][-4])
+map1
+
+data7_postmatrix <- logposterior2_matrix(data7,2,2,p2)
+map2 <- as.numeric(data7_postmatrix[which.max(data7_postmatrix$logposterior),][-4])
+map2
+
+unemp_postmatrix <- logposterior2_matrix(unemp,2,2,p3)
+map3 <- as.numeric(unemp_postmatrix[which.max(unemp_postmatrix$logposterior),][-4])
+map3
+```
+
+I am waiting... Hope this time it works although I make up the number 1000 here! It seems that we should come up with a reasonable choice of c1 and c2...
+
+why don't we choose p just equal to the lower limit?
+
+```{r}
+################ p1 ################
+
+  
+  p1 <- -loglikelihood(data5,data5_ssm_trend50,data5_ssm_seasonal50,c(50,50,1))/50 
+  
+  
+  
+################ p2 ################
+  
+  
+  
+  p2 <- -loglikelihood(data7,data7_ssm_trend50,data7_ssm_seasonal50,c(50,50,1))/50 
+  
+  
+  
+################ p3 ################
+  
+
+  
+  p3 <- -loglikelihood(unemp,unemp_ssm_trend50,unemp_ssm_seasonal50,c(50,50,1))/50 
+
+```
+
+This is the result of c1=c2=1:
+
+```{r}
+
+data5_postmatrix <- logposterior2_matrix(data5,1,1,p1)
+map1 <- as.numeric(data5_postmatrix[which.max(data5_postmatrix$logposterior),][-4])
+map1
+
+data7_postmatrix <- logposterior2_matrix(data7,1,1,p2)
+map2 <- as.numeric(data7_postmatrix[which.max(data7_postmatrix$logposterior),][-4])
+map2
+
+unemp_postmatrix <- logposterior2_matrix(unemp,1,1,p3)
+map3 <- as.numeric(unemp_postmatrix[which.max(unemp_postmatrix$logposterior),][-4])
+map3
+
+```
+
+This is the result of c1=c2=2:
+
+```{r}
+
+data5_postmatrix <- logposterior2_matrix(data5,2,2,p1)
+map1 <- as.numeric(data5_postmatrix[which.max(data5_postmatrix$logposterior),][-4])
+map1
+
+data7_postmatrix <- logposterior2_matrix(data7,2,2,p2)
+map2 <- as.numeric(data7_postmatrix[which.max(data7_postmatrix$logposterior),][-4])
+map2
+
+unemp_postmatrix <- logposterior2_matrix(unemp,2,2,p3)
+map3 <- as.numeric(unemp_postmatrix[which.max(unemp_postmatrix$logposterior),][-4])
+map3
+```
+
+我还是在等code跑完，目前看着前一部分的结果还ok. 不过一个问题我很疑问，为什么unemp’s map 的$\sigma_T^2$比$\sigma_y^2$大呢？ 回想起来我们想要的结果应该是751 接近的话还可以理解 但是结果不是接近的啊。
+
+Let's try to apply the c1c2_gridsearch function! Hope it works this time！
+
+```
+
+logposterior2_matrix <- function(data, c1, c2, p){
+  LP <- c()
+  index <- c()
+   for (i in 1:50) {
+     for (j in 1:50) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i, j, 1)
+         
+         lp <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma) + logprior2(sigma, c1, c2,p)
+         LP <- c(LP, lp)
+         index <- rbind(index, sigma)
+         
+      }
+   }
+  df <- data.frame(variance=index, logposterior=LP)
+  return(df)
+}
+```
+
+```{r}
+Prior2_gridsearch <- function(dataset1,dataset2,dataset3){
+  Error <- c()
+  index <- c()
+  dataset1_x11 <- seas(dataset1,x11='')
+  dataset2_x11 <- seas(dataset2,x11='')
+  dataset3_x11 <- seas(dataset3,x11='')
+
+  
+  # compute error/loss
+  
+  for (i in 1:10) {
+    for (j in 1:10) {
+      
+      dataset1_postmatrix <- logposterior2_matrix(dataset1,i,j,p1)
+      map1 <- as.numeric(dataset1_postmatrix[which.max(dataset1_postmatrix$logposterior),][-4])
+                                 
+      
+      ssmm1 <- SSModel(dataset1 ~ SSMtrend(1, Q=list(map1[2])) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = map1[1])
+      ssm1 <- KFS(ssmm1)
+      dif1 <- Dif1(dataset1_x11,ssm1,dataset1,map1)
+      
+      
+      dataset2_postmatrix <- logposterior2_matrix(dataset2,i,j,p2)
+      map2 <- as.numeric(dataset2_postmatrix[which.max(dataset2_postmatrix$logposterior),][-4])
+      
+      ssmm2 <- SSModel(dataset2 ~ SSMtrend(1, Q=list(map2[2])) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = map2[1])
+      ssm2 <- KFS(ssmm2)
+      dif2 <- Dif1(dataset2_x11,ssm2,dataset2,map2)
+
+      
+      dataset3_postmatrix <- logposterior2_matrix(dataset3,i,j,p3)
+      map3 <- as.numeric(dataset3_postmatrix[which.max(dataset3_postmatrix$logposterior),][-4])
+      
+      ssmm3 <- SSModel(dataset3 ~ SSMtrend(1, Q=list(map3[2])) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = map3[1])
+      ssm3 <- KFS(ssmm3)
+      dif3 <- Dif1(dataset3_x11,ssm3,dataset3,map3)
+
+      error <- dif1+dif2+dif3
+      Error <- c(Error, error)
+      index <- rbind(index, c(i,j))
+    }
+  }
+  return(data.frame(c1=index[,1],c2=index[,2],Error=Error))
+}
+```
+
+```
+
+c1c2_gridsearch2 <- Prior2_gridsearch(data5,data7,unemp)
+
+write.csv(c1c2_gridsearch2,'C:\\Users\\GuoLY\\Desktop\\markdown\\MLE & MAP\\prior2_c1c2.csv')
+
+```
+
+*说点题外话，因为等待的时间实在是太难熬了。根据此次编程，我深刻认识到用矩阵的重要性。在接下来的编程中，如果可以用矩阵或者向量，请务必转换成对应的形式。单个数循环实在太浪费时间了。*
+
+~~奶奶个腿 我刚发现之前那个文件里的之所以很快run出来是因为logpost定义是20×20的 我这里是50×50的 这样看 原来的需要算400×3×100 现在需要2500×3×100 后者是前者的6倍多！如果之前用了15分钟 那么现在至少也要用90分钟了。好了， 我去睡觉了。希望明天早起之后有结果！~~
+
+今早上六点半爬起来 七点半左右又开始干活了。
+
+我把logpost的loop从50调到了15，现在得到了一个对应的结果。让我们看看这个效果怎么样：
+
+```{r}
+c1c2_gridsearch2 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\MLE & MAP\\prior2_c1c2.csv')
+c1c2_gridsearch2[which.min(c1c2_gridsearch2$Error),]
+
+```
+
+```{r}
+data5_postmatrix <- logposterior2_matrix(data5,3,10,p1)
+map1 <- as.numeric(data5_postmatrix[which.max(data5_postmatrix$logposterior),][-4])
+map1
+
+data7_postmatrix <- logposterior2_matrix(data7,3,10,p2)
+map2 <- as.numeric(data7_postmatrix[which.max(data7_postmatrix$logposterior),][-4])
+map2
+
+unemp_postmatrix <- logposterior2_matrix(unemp,3,10,p3)
+map3 <- as.numeric(unemp_postmatrix[which.max(unemp_postmatrix$logposterior),][-4])
+map3
+```
+
+我们希望的结果是 c(9,3,1) c(10,3,1) and c(7,5,1). And another question is the choice of c2 here. We need to enlarge the scope of c2 or enlarge the p's value. Anyway, let's try enlarge the p's value at first.
+
+```{r}
+data5_ssmm20 <- SSModel(data5~SSMtrend(1,Q=list(20)) + 
+                          SSMseasonal(12,sea.type = 'dummy', Q=1), H=20)
+data5_ssm20 <- KFS(data5_ssmm20)
+data5_ssm20_trend <- coef(data5_ssm20, states = 'trend')
+data5_ssm20_seasonal <- -rowSums(coef(data5_ssm20, states = 'seasonal'))
+
+data7_ssmm20 <- SSModel(data7~SSMtrend(1,Q=list(20)) + 
+                          SSMseasonal(12,sea.type = 'dummy', Q=1), H=20)
+data7_ssm20 <- KFS(data7_ssmm20)
+data7_ssm20_trend <- coef(data7_ssm20, states = 'trend')
+data7_ssm20_seasonal <- -rowSums(coef(data7_ssm20, states = 'seasonal'))
+
+unemp_ssmm20 <- SSModel(unemp~SSMtrend(1,Q=list(20)) + 
+                          SSMseasonal(12,sea.type = 'dummy', Q=1), H=20)
+unemp_ssm20 <- KFS(unemp_ssmm20)
+unemp_ssm20_trend <- coef(unemp_ssm20, states = 'trend')
+unemp_ssm20_seasonal <- -rowSums(coef(unemp_ssm20, states = 'seasonal'))
+################ p1 ################
+
+  
+  p1 <- -loglikelihood(data5,data5_ssm20_trend,data5_ssm20_seasonal,c(20,20,1))/20 
+  
+  
+  
+################ p2 ################
+  
+  
+  
+  p2 <- -loglikelihood(data7,data7_ssm20_trend,data7_ssm20_seasonal,c(20,20,1))/20 
+  
+  
+  
+################ p3 ################
+  
+
+  
+  p3 <- -loglikelihood(unemp,unemp_ssm20_trend,unemp_ssm20_seasonal,c(20,20,1))/20 
+
+```
+
+```
+c1c2_gridsearch2 <- Prior2_gridsearch(data5,data7,unemp)
+
+write.csv(c1c2_gridsearch2,'C:\\Users\\GuoLY\\Desktop\\markdown\\MLE & MAP\\prior2_c1c2_2.csv')
+```
+
+**Again, as a matter of time, I save the final result as a .csv file. Read it directly if necessary.**
+
+```{r}
+c1c2_gridsearch2 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\MLE & MAP\\prior2_c1c2_2.csv')
+c1c2_gridsearch2[which.min(c1c2_gridsearch2$Error),]
+
+```
+```{r}
+
+data5_postmatrix <- logposterior2_matrix(data5,3,8,p1)
+map1 <- as.numeric(data5_postmatrix[which.max(data5_postmatrix$logposterior),][-4])
+map1
+
+data7_postmatrix <- logposterior2_matrix(data7,3,8,p2)
+map2 <- as.numeric(data7_postmatrix[which.max(data7_postmatrix$logposterior),][-4])
+map2
+
+unemp_postmatrix <- logposterior2_matrix(unemp,3,8,p3)
+map3 <- as.numeric(unemp_postmatrix[which.max(unemp_postmatrix$logposterior),][-4])
+map3
+```
+
+Well, this result is much better! At least for the first two datasets they are good! I need to find other datasets to do the test.
+
+But before that let's have a visualization check first:
+
+```{r}
+data5_ssmm931 <-SSModel(data5 ~ SSMtrend(1, Q=list(3)) + 
+                          SSMseasonal(12, sea.type = 'dummy', Q=1), H=9)
+data5_ssm931 <- KFS(data5_ssmm931)
+data5_ssm931_trend <- coef(data5_ssm931,states='trend')
+data5_ssm931_seasonal <- -rowSums(coef(data5_ssm931, states='seasonal'))
+```
+```{r}
+plot(data5_ssm931_trend,ylab='',ylim=c(280000,620000))
+par(new=TRUE)
+plot(series(data5_x11,'d12'),type='l',ylab='',ylim=c(280000,620000),col=2)
+title('trend')
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+plot(data5_ssm931_seasonal[-length(data5)], type='l', ylab='',ylim = c(-120000,170000))
+par(new=TRUE)
+plot(series(data5_x11,'d10')[-1], type='l', ylab='',ylim = c(-120000,170000),col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+title('seasonal')
+
+```
+
+<center> 
+**SUMMARY 20191121**
+</br>
+After meeting with Aaron, I found I do need to decrease my expectation of him. It is my research! I shouldn't count on anyone else! After all, this area is not related to his research actually. That is to say I am his teacher to some extent sometimes! So, there is no need to feel that 'oh he is my supervisor so he must know more things than me. It is not correct! ok? He is also a human. Anyway, think more! You can do it!
+</center>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

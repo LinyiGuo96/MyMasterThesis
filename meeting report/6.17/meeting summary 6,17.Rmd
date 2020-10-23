@@ -1,0 +1,37 @@
+---
+title: "meeting summary 6.17"
+author: "linyiguo"
+date: "2019.6.19"
+output: word_document
+---
+Although I did not do much research before, Aaron still gave me a lot of ideas this time. I spent about one and half an hour to listen the recording, and it is worthy. Let's say what we can try in next week:
+
+# I    
+We already know with standard deviation becoming larger, the curve of our deseasonal series will become smoother. What we already get is the case when deviation is 1 and 100(a relative large number, but not enough), so we can try to see, like when sd=1000, the curve will be like? Meanwhile, we can also plot these curves with fixed interval and see.
+
+**comment(personal):** we should compare the deseasonal curve with that of *ARIMA* model, since the traditional methods are thought to be good by default.
+
+# II   
+Aaron also gave me another good idea about weight expression: our former weight is $\omega_t = dnorm(Y_t-T_t-S_t, sd=?)$ but now we can change it into $\omega_t = dnorm(Y_t-T_t-S_t, sd=?) * dnorm(S_t+\sum_{j=1}^{s-1}S_{t-j}, sd=?)$, which means we consider the relation of seasonal part in our weight now. That is to say we want to choose the partical whose seasonal part makes $\sum_{j=0}^{s-1}S_{t-j}$ small enough. 
+
+**Note:** In the state space model, the deviation of seasonal component controls its corresponding curve. If we let the noise in seasonal component to be 0, then our seasonal part will be a constant series, on the contrary, it won't be obvious if the deviation is pretty large.
+
+# III(StatCan actually wants)   
+For curves with different smoothness, use them to predict on our simulated data and check the performance of them.    
+**Question:** Aaron suggested me to plot the error-time graph, but what's the defination of error here?    
+
+# IV(Partial Pooling/Hierarchical modeling)   
+Sometimes, we may have one model with 18(for example) parameters but the length of data is just 78(weekly data in one and half a year). Obviouly, it is hard to fix so many parameters with limited information.
+
+Sometimes, we may need to build two models(maybe more) with both 10 parameters. And perhaps 5 of them are pretty close, say the difference between them is 10^{-100}, so the total parameters we need to pin down are 15. These five shared parameters could be anything, like initial seasonal component or variance of noise. 
+
+We know the degree of freedom will be 20 if the difference is 0 or 15 if the difference is inf. So we may try to figure our the relation between d.o.f and this continuous parameter(it seems called hyperparameter).
+
+Given IV above, for many short time series, it is harder to apply ARIMA model(*why?*) and easier to use state space model.
+
+Actually, we are still at reproducing stage... we believe the result from X-13ARIMA or SEATS are good. What we are doing recently essentially is to generate the same result... but one thing to pay attention, that is the key of state space model is actually what we are doing (perhaps?). We can achieve adjustment easily by controlling the variance of noises in s.s model.
+
+
+
+
+

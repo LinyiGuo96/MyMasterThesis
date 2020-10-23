@@ -1,0 +1,391 @@
+---
+title: "Exhaustion&MLE&MAP"
+author: "Linyi Guo"
+date: "2019/11/2"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r include=FALSE}
+rm(list=ls())
+set.seed(9483)
+```
+
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+library(ggplot2)
+library(plotly)
+```
+
+Based on **report20191030**, incorporated with Aaron's suggestion, make some modification of Exhaustion, MLE & MAP.
+
+The related note is on my notebook, under topic **Review Meeting 10.30**.
+
+# Exhaustion
+
+Fix $\sigma_S^2=1$, we can achieve all possible combination under this condition, cause we care about the ratio among three variances instead of the value.
+
+And we can use the second lose function now:
+$\frac{\sum(X11_{irregular}-SSM_{irregular})^2}{\sigma_I^2} + \frac{\sum(X11_{trend}-SSM_{trend})^2}{\sigma_T^2} + \frac{\sum(X11_{seasonal}-SSM_{seasonal})^2}{\sigma_S^2}$
+
+```{r}
+# define the loss function
+Dif <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_irregular <- data[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+ 
+  D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+    sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+```
+```{r}
+
+# define the search function
+
+exhaustion <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:10) {
+     for (j in 1:10) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j*0.2)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i*0.2)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i*0.2, j*0.2, 1)
+           
+           dif <- Dif(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+```{r}
+unemp_exhaustion <- exhaustion(unemp)
+unemp_exhaustion[which.min(unemp_exhaustion$difference),]
+
+```
+
+The above part is to illustrate that when fix $\sigma_S^2=1$, values of the other variances are greater than 1. That is to say we prefer to devide more variability to irregular and trend. **Therefore**, we can let them begin at 1, as following:
+
+
+```{r}
+
+# define the search function
+
+exhaustion <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:20) {
+     for (j in 1:20) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i, j, 1)
+           
+           dif <- Dif(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+```{r}
+unemp_exhaustion <- exhaustion(unemp)
+unemp_exhaustion[which.min(unemp_exhaustion$difference),]
+```
+
+Thus the 'best' value(ratio) is c(7,5,1) when we set scope of variance is 1:20.(I tried scope 1:100 and the result is still c(7,5,1).)
+
+Let's see the loss around this combination:
+
+```{r echo=FALSE}
+unemp_exhaustion[which(unemp_exhaustion$variance.1 %in% c(5,6,7,8,9) & 
+                         unemp_exhaustion$variance.2 %in% c(3,4,5,6,7) ),]
+
+difference <- matrix(unemp_exhaustion[which(unemp_exhaustion$variance.1 %in% c(5,6,7,8,9) &  unemp_exhaustion$variance.2 %in% c(3,4,5,6,7) ),]$difference,
+                        nrow=5,byrow=TRUE)
+
+plot_ly(showscale = FALSE) %>% add_surface(x=~c(3:7), y=~c(5:9), z=~difference)
+```
+
+And the results from c(7,5,1) are:
+
+```{r include=FALSE}
+ssmm <- SSModel(unemp ~ SSMtrend(1, Q=list(5)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 7)
+unemp_ssm <- KFS(ssmm)
+  
+unemp_x11 <- seas(unemp, x11='')
+
+unemp_ssm_trend <- coef(unemp_ssm, states = 'trend')
+unemp_ssm_seasonal <- -rowSums(coef(unemp_ssm, states='seasonal'))
+unemp_ssm_irregular <- unemp[-1] - unemp_ssm_trend[-1] -
+  unemp_ssm_seasonal[-length(unemp)]
+unemp_ssm_seasadj <- unemp[-1]-unemp_ssm_seasonal[-length(unemp)]
+
+unemp_x11_trend <- series(unemp_x11, 'd12')
+unemp_x11_seasonal <- series(unemp_x11, 'd10')
+unemp_x11_irregular <- series(unemp_x11, 'd13')
+unemp_x11_seasadj <- series(unemp_x11, 'd11')
+```
+
+```{r echo=FALSE}
+# Seasonal Adjustment
+plot(ts(unemp_x11_seasadj[-1],start = c(1990,2),frequency = 12),
+     ylim=c(5500,15500),ylab='')
+par(new=TRUE)
+plot(ts(unemp_ssm_seasadj, start = c(1990,2),frequency = 12), 
+     ylim=c(5500,15500),ylab='', col=2)
+title('Seasonal adjustment')
+legend('topleft',c('X11','SSM'), col=c(1,2), lty=1)
+
+
+# Trend
+plot(unemp_x11_trend,ylim=c(5500,15500),ylab='')
+par(new=TRUE)
+plot(unemp_ssm_trend,ylim=c(5500,15500),ylab='', col=2)
+title('Trend')
+legend('topleft',c('X11','SSM'), col=c(1,2), lty=1)
+
+# Season
+plot(unemp_x11_seasonal[-1],type = 'l',ylim=c(-700,1000), ylab='')
+par(new=TRUE)
+plot(unemp_ssm_seasonal[-length(unemp)], type='l', ylim=c(-700,1000), ylab='',col=2)
+title('Season')
+legend('topleft',c('X11','SSM'), col=c(1,2), lty=1,cex = 0.8)
+
+
+plot(unemp_x11_seasonal[-1][1:100],type = 'l',ylim=c(-700,1000), ylab='')
+par(new=TRUE)
+plot(unemp_ssm_seasonal[-length(unemp)][1:100], type='l', ylim=c(-700,1000), ylab='',col=2)
+title('Season(the first 100 points)')
+legend('topleft',c('X11','SSM'), col=c(1,2), lty=1,cex = 0.8)
+
+# Irregular
+plot(unemp_x11_irregular[-1], type='l', ylim=c(-450,500),ylab='')
+par(new=TRUE)
+plot(unemp_ssm_irregular, type='l', ylim=c(-450,500),ylab='', col=2)
+title('Irregular')
+legend('topleft',c('X11','SSM'), col=c(1,2), lty=1)
+```
+
+As a comparison, let's see the result if we let variance to be (1,1,1):
+
+```{r include=FALSE}
+
+ssmm <- SSModel(unemp ~ SSMtrend(1, Q=list(1)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 1)
+unemp_ssm111 <- KFS(ssmm)
+
+
+unemp_ssm111_trend <- coef(unemp_ssm111, states = 'trend')
+unemp_ssm111_seasonal <- -rowSums(coef(unemp_ssm111, states='seasonal'))
+unemp_ssm111_irregular <- unemp[-1] - unemp_ssm111_trend[-1] -
+  unemp_ssm111_seasonal[-length(unemp)]
+unemp_ssm111_seasadj <- unemp[-1]-unemp_ssm111_seasonal[-length(unemp)]
+```
+
+```{r echo=FALSE}
+# Seasonal Adjustment
+plot(ts(unemp_x11_seasadj[-1],start = c(1990,2),frequency = 12),
+     ylim=c(5500,15500),ylab='')
+par(new=TRUE)
+plot(ts(unemp_ssm111_seasadj, start = c(1990,2),frequency = 12), 
+     ylim=c(5500,15500),ylab='', col=2)
+par(new=TRUE)
+plot(ts(unemp_ssm_seasadj, start = c(1990,2),frequency = 12), 
+     ylim=c(5500,15500),ylab='', col=3)
+title('Seasonal adjustment')
+legend('topleft',c('X11','SSM111','SSM751'), col=c(1,2,3), lty=1)
+
+
+# Trend
+plot(unemp_x11_trend,ylim=c(5500,15500),ylab='')
+par(new=TRUE)
+plot(unemp_ssm111_trend,ylim=c(5500,15500),ylab='', col=2)
+par(new=TRUE)
+plot(unemp_ssm_trend,ylim=c(5500,15500),ylab='', col=3)
+title('Trend')
+legend('topleft',c('X11','SSM111','SSM751'), col=c(1,2,3), lty=1)
+
+# Season
+plot(unemp_x11_seasonal[-1],type = 'l',ylim=c(-700,1000), ylab='')
+par(new=TRUE)
+plot(unemp_ssm111_seasonal[-length(unemp)], type='l', ylim=c(-700,1000),
+     ylab='',col=2)
+par(new=TRUE)
+plot(unemp_ssm_seasonal[-length(unemp)], type='l', ylim=c(-700,1000), 
+     ylab='',col=3)
+title('Season')
+legend('topleft',c('X11','SSM111','SSM751'), col=c(1,2,3), lty=1,cex = 0.8)
+
+
+plot(unemp_x11_seasonal[-1][1:100],type = 'l',ylim=c(-700,1000), ylab='')
+par(new=TRUE)
+plot(unemp_ssm111_seasonal[-length(unemp)][1:100], type='l', ylim=c(-700,1000),
+     ylab='',col=2)
+par(new=TRUE)
+plot(unemp_ssm_seasonal[-length(unemp)][1:100], type='l', ylim=c(-700,1000),
+     ylab='',col=3)
+title('Season(the first 100 points)')
+legend('topleft',c('X11','SSM111','SSM751'), col=c(1,2,3), lty=1,cex = 0.8)
+
+# Irregular
+plot(unemp_x11_irregular[-1], type='l', ylim=c(-450,500),ylab='')
+par(new=TRUE)
+plot(unemp_ssm111_irregular, type='l', ylim=c(-450,500),ylab='', col=2)
+par(new=TRUE)
+plot(unemp_ssm_irregular, type='l', ylim=c(-450,500),ylab='', col=3)
+title('Irregular')
+legend('topleft',c('X11','SSM111','SSM751'), col=c(1,2,3), lty=1)
+```
+
+From some details in the picture, it's generally true that the results from c(7,5,1) is better than those from c(1,1,1).
+
+# MLE
+
+```{r}
+# define the log likelihood function
+# because of seasonal components' characteristic
+# I didn't compute the loglikelihood at first 11 points
+
+loglikelihood <- function(data, trend, season, sigma){
+  
+  n <- length(data)
+  a <- 0
+  for (i in 12:n)  a <- a + (sum(season[(i-11):i]))^2
+  l <- -(n-11)/2 * log(sigma[1]) - 
+    (n-11)/2 * log(sigma[2]) - (n-11)/2 * log(sigma[3]) -
+    sum((data[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/(2*sigma[1]) - 
+    sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/(2*sigma[2]) - 
+    a / (2*sigma[3])
+  return(l)
+  
+}
+
+```
+
+Like the exhaustion part, we first check cases when variance of the other two is less than 1:
+
+```{r}
+# define the log likelihood matrix
+loglikelihood_matrix <- function(data){
+  LL <- c()
+  index <- c()
+   for (i in 1:100) {
+     for (j in 1:100) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j*0.01)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i*0.01)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i*0.01, j*0.01, 1)
+         
+         ll <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma)
+         LL <- c(LL, ll)
+         index <- rbind(index, sigma)
+      }
+   }
+  df <- data.frame(variance=index, loglikelihood=LL)
+  return(df)
+}
+```
+
+```{r}
+unemp_loglikelihoodmatrix <- loglikelihood_matrix(unemp)
+unemp_loglikelihoodmatrix[which.max(unemp_loglikelihoodmatrix$loglikelihood),]
+```
+
+Therefore, we may exclude the possibility that out mle is less than 1.
+
+Let's look at the case when variances are greater than 1:
+
+```{r}
+# define the log likelihood matrix
+loglikelihood_matrix <- function(data){
+  LL <- c()
+  index <- c()
+   for (i in 1:100) {
+     for (j in 1:100) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i, j, 1)
+         
+         ll <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma)
+         LL <- c(LL, ll)
+         index <- rbind(index, sigma)
+      }
+   }
+  df <- data.frame(variance=index, loglikelihood=LL)
+  return(df)
+}
+```
+
+```{r}
+unemp_loglikelihoodmatrix <- loglikelihood_matrix(unemp)
+unemp_loglikelihoodmatrix[which.max(unemp_loglikelihoodmatrix$loglikelihood),]
+```
+
+After setting the scope at 1:25, 1:50 and 1:100, I find that the mle is always the largest value we could take for each scope and the ratio of max loglikelihood is approx 4:2:1. If we write down the expression of loglikelihood, we will found the variance is our denominator, so that is to say, our components' difference(numerator) doesn't have a huge change for different cases, and values of variances themselves play a more important role for loglikelihood.
+
+Let's have a look at these loglikelihoods:
+
+```{r echo=FALSE}
+plot_ly(unemp_loglikelihoodmatrix,x=~variance.1, y=~variance.2, z=~loglikelihood,
+        color = ~loglikelihood) %>% 
+  add_markers()
+```
+
+# MAP
+
+
+
+
+
+

@@ -1,0 +1,35 @@
+---
+title: "meeting report 6-3"
+author: "linyiguo"
+date: "2019.6.2"
+output: 
+     word_document: default
+---
+
+Hi Aaron, I am writing to give you a brief of what I have done in last three days and some questions we could talk about tmr. Before starting, I want to say sorry cause I did not do a lot work in this weekend. One of my friends was looking for a place to live next term and it took me some time to help her to find such a place.
+
+Hope you can understand :)   
+
+# I
+I am reading some tutorial about *Kalman filter* recently, and the main resource is the [tutorial](http://web.mit.edu/kirtley/kirtley/binlustuff/literature/control/Kalman%20filter.pdf) from MIT.   
+And I have a question about *equation 11.22*: I can't see what is the relation among it and the other content. i.e. **what is the meaning of $P_{kk}$ here? **   
+
+# II
+Maybe you still remember that I met some problems in state space model when dealing with initialization and I thought if I let $T_1 = Y_1$($Y_1$ is our data), this problem could be solved perhaps. Review: according to the discussion from Durbin, our state space model is:
+$$Y_t = T_t + S_t + \epsilon_t$$
+$$T_t = T_{t-1} + \eta_t$$
+$$\sum_{i=0}^{s-1} S_{t-i} = \omega_t$$
+I remembered you told me $T_t$ here is not trend. **I know it should not be treated as a trend but am still a little confused what it is exactly.**   
+And I tried my idea on the data set *unemp*, it only worked at the first moment, and faied then. Since the difference between $Y_1,Y_2$ is large, and the change of $T,S$ is small, the result $Y_2-T_2-S_2$ is also large, which makes the density $\phi(Y_2-T_2-S_2)$ is almost 0 as well. And it is the same when I apply simulated data... the only difference is that it takes more time before weights become to be zeros. I guess it is because the changes of simulated data is slow, so substractions are not very big at first. In a word, I still can't figure out the initialization problem and it does influence the computation after. Sorry for that.
+
+**-Update 6.3-**  
+这个update按理说是下午就应该写的，但是因为在忙一些其他的事情，暂时搁置了。刚刚和pp视频完，现在就我所能记住的写一下吧：
+1）不用纠结$P_{kk}$是什么意思，因为这个东西在前后都没有出现，可能在这里只是一个def罢了，略过；   
+2）It is hard to give a precise def of $T_t$, and the reason why Aaron does not like to call it trend is mainly from i) when we call something trend, this thing's expectation is not identically 0; ii) if we drop the seasonal part in our model, then we will have $y_t=\epsilon_t+\eta_t+\eta_{t-1}+\dots+\eta_1+T_0$. *Well,I am not very clear what Aaron means, maybe update later*   
+3) two sugguestions: i) try to plot everything when things go wrong, eg. data vs particles; data vs estimated trends; etc... In my case, it would be better to check these situations at the beginning, like the first point and then the second... cause my weights degenerate at from the beginning; ii) the deviation of our proposal dist'n matters a lot. The relation between it and that of true proposal decides the quantity of our particles. So, when in doubt, increase the standard deviation and # of particles and see if things get better.   
+
+**Personal comment:** The initialization problem has troubled me for a long time. At first, I really really never expect to spend so much time on it. Maybe I should transform my mind a little bit? Cause the 'traditional' method is just my code after initialization. And these code is not wrong. Is is possible, like Aaron told me in 3), that the problem is from some technical details that I am aware of? If it is in this case, it makes sense... cause what I know about the these concepts is just the whole structure. Well, the devil is in the detail. Be patient and think more!
+
+
+
+

@@ -1,0 +1,425 @@
+---
+title: "MLE&MAP4"
+author: "LinyiGuo"
+date: "2019/10/22"
+output: 
+  html_document:
+    toc: true
+  pdf_document:
+    toc: true
+---
+
+
+```{r echo = FALSE} 
+rm(list = ls())
+set.seed(9483)
+```
+```{r include = FALSE}
+library(KFAS)
+library(seasonal)
+library(plot3D)
+library(plotly)
+```
+
+# Likelihood
+
+Define the likelihood function of state-space model like:
+$$L(\sigma_y^2, \sigma_T^2, \sigma_S^2) = \prod p(y_t|T_t, S_t, \sigma_y^2) * \prod p(T_t|T_{t-1}, \sigma_T^2) * \prod p(S_t|S_{t-1},\dots, S_{t-11}, \sigma_S^2)$$
+
+```{r eval=FALSE, include=FALSE}
+likelihood <- function(data, trend, seasonal, sigma) {
+  n <- length(data)
+  a <- 0 
+  for (i in 12:n)  a <- a + (sum(seasonal[(i-11):i]))^2
+  L <- (1/sqrt(2*pi*prod(sigma)))^n * 
+          exp(-sum((data - trend - seasonal)^2)/(2*sigma[1])) * 
+          exp(-sum((trend[-1]-trend[-n])^2)/(2*sigma[2])) *
+          exp(- a/(2*sigma[3]))
+  return(L)
+}
+```
+
+```{r}
+# seasonal component is ahead of that of x11 with one unit
+likelihood <- function(data, trend, seasonal, sigma) {
+  n <- length(data)
+  a <- 0 
+  for (i in 12:n)  a <- a + (sum(seasonal[(i-11):i]))^2
+  # we ignore the constant in the likelihood expression
+  # and ignore some term (first 11) that can't be computed(which could influence the result)
+  L <- (1/sqrt(prod(sigma)))^(n-11) * 
+          exp(-sum((data[-c(1:11)]-trend[-c(1:11)]-seasonal[-c(1:10,n)])^2)/(2*sigma[1])) * 
+          exp(-sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/(2*sigma[2])) *
+          exp(- a/(2*sigma[3]))
+  return(L)
+}
+
+```
+
+# Posterior
+
+Before we define posterior, we need to name a prior at first. Suppose the prior of a single parameter is 'prior', the prior on $\sigma^2=c(\sigma_y^2,\sigma_T^2, \sigma_S^2)$ is the product of three priors.
+
+```{r}
+# suppose our prior of a single parameter is 'prior'
+# we need to give a concrete prior to calculate the posterior
+Prior <- function(sigma) prior(sigma[1])*prior(sigma[2])*prior(sigma[3])
+
+# define the posterior
+posterior <- function(data, trend, seasonal, sigma) {
+  return(likelihood(data, trend, seasonal, sigma) * Prior(sigma))
+}
+
+
+```
+
+# Maximum likelihood estimation
+
+```{r}
+# define the likelihood matrix
+likelihood_matrix <- function(data){
+  L <- c()
+  index <- c()
+   for (i in 1:6) {
+     for (j in 1:6) {
+       for (k in 1:6) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(10^(-4+j))) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 10^(-4+k)),
+                 H = 10^(-4+i))
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #       ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(10^(-4+i),10^(-4+j),10^(-4+k))
+         
+         l <- likelihood(data, ssm_trend, ssm_seasonal, sigma)
+         L <- c(L, l)
+         index <- rbind(index, sigma)
+         }
+      }
+   }
+  df <- data.frame(variance=index, likelihood=L)
+  return(df)
+}
+```
+
+```{r}
+unemp_likelihoodmatrix <- likelihood_matrix(unemp)
+head(unemp_likelihoodmatrix)
+unemp_likelihoodmatrix$likelihood
+unemp_likelihoodmatrix[which.max(unemp_likelihoodmatrix$likelihood),]
+
+```
+
+As we can see, a lot of likelihood here is 0/0(NaN) or 0.
+
+
+# Maximum A Posterior Estimation
+
+```{r}
+prior <- function(sigma) {
+  exp(-sigma)
+}
+```
+
+```{r}
+posterior_matrix <- function(data){
+  P <- c()
+  index <- c()
+   for (i in 1:6) {
+     for (j in 1:6) {
+       for (k in 1:6) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(10^(-4+j))) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 10^(-4+k)),
+                 H = 10^(-4+i))
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #       ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(10^(-4+i),10^(-4+j),10^(-4+k))
+         
+         p <- posterior(data, ssm_trend, ssm_seasonal, sigma)
+         
+         P <- c(P, p)
+         index <- rbind(index, sigma)
+         }
+      }
+   }
+  df <- data.frame(variance=index, Posterior=P)
+  return(df)
+}
+```
+
+```{r}
+unemp_postmatrix <- posterior_matrix(unemp)
+head(unemp_postmatrix)
+unemp_postmatrix$Posterior
+```
+```{r eval=FALSE, include=FALSE}
+unemp_postmatrix$Posterior
+unemp_likelihoodmatrix$likelihood
+```
+
+**Comment: ** the likelihood and posterior matrix are made of 0 and NaN, but we don't want this result. 
+
+
+
+
+# To Be Continued
+
+
+# Update -> Take log likelihood
+
+**Note: ** I change the setting of variances into c(1:10) instead of {0.001,0.01,...,10}. 
+
+Since the results from likelihood are not good, we would like to try log likelihood then.
+
+```{r}
+# define the log likelihood function
+
+loglikelihood <- function(data, trend, season, sigma){
+  
+  n <- length(data)
+  a <- 0
+  for (i in 12:n)  a <- a + (sum(season[(i-11):i]))^2
+  l <- -(n-11)/2 * log(sigma[1]) - 
+    (n-11)/2 * log(sigma[2]) - (n-11)/2 * log(sigma[3]) -
+    sum((data[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/(2*sigma[1]) - 
+    sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/(2*sigma[2]) - 
+    a / (2*sigma[3])
+  return(l)
+  
+}
+
+```
+
+# Maximum Log Likelihood Estimation
+
+```{r}
+
+# define the log likelihood matrix
+loglikelihood_matrix <- function(data){
+  LL <- c()
+  index <- c()
+   for (i in 1:10) {
+     for (j in 1:10) {
+       for (k in 1:10) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = k),
+                 H = i)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i, j, k)
+         
+         ll <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma)
+         LL <- c(LL, ll)
+         index <- rbind(index, sigma)
+         }
+      }
+   }
+  df <- data.frame(variance=index, loglikelihood=LL)
+  return(df)
+}
+```
+
+```{r}
+unemp_loglikelihoodmatrix <- loglikelihood_matrix(unemp)
+
+unemp_loglikelihoodmatrix[which.max(unemp_loglikelihoodmatrix$loglikelihood),]
+```
+
+# Try plot likelihood in 3-d figure
+
+I will fix $\sigma_S^2$ at 1:10, then plot the other two variance with likelihood:
+
+```{r echo=FALSE}
+for(i in 1:10){
+  matrix <- unemp_loglikelihoodmatrix[which(unemp_loglikelihoodmatrix$variance.3 == i),]
+  
+  print(plot_ly(matrix) %>% add_markers(x = ~variance.1 , y=~variance.2, z=~loglikelihood,color=~loglikelihood))
+}
+```
+
+Fix $\sigma_y^2$:
+
+```{r echo=FALSE}
+for(i in 1:10){
+  matrix <- unemp_loglikelihoodmatrix[which(unemp_loglikelihoodmatrix$variance.1 == i),]
+  
+  print(plot_ly(matrix) %>% add_markers(x = ~variance.2 , y=~variance.3, z=~loglikelihood,color=~loglikelihood))
+}
+```
+
+Fix $\sigma_T^2$:
+
+```{r echo=FALSE}
+for(i in 1:10){
+  matrix <- unemp_loglikelihoodmatrix[which(unemp_loglikelihoodmatrix$variance.2 == i),]
+  
+  print(plot_ly(matrix) %>% add_markers(x = ~variance.1 , y=~variance.3, z=~loglikelihood,color=~loglikelihood))
+}
+```
+
+Based on these results, the intuitive conclusion **may be**: with $\sigma_y^2$ and $\sigma_T^2$ increasing, (log)likelihood will increase; with $\sigma_S^2$ increasing, (log)likelihood will decrease
+
+```{r echo=FALSE}
+for (i in 1:10){
+p <- ggplot(data=unemp_loglikelihoodmatrix[which(unemp_loglikelihoodmatrix$variance.1 == 10 & unemp_loglikelihoodmatrix$variance.2==i),], aes(x=variance.3, y=loglikelihood)) + 
+  geom_line() 
+  
+
+print(p)
+}
+```
+
+Plot them together: (Again, we fix the observation/irregular variance at 10)
+
+```{r echo=FALSE}
+ggplot(data=unemp_loglikelihoodmatrix[which(unemp_loglikelihoodmatrix$variance.1 == 10),], aes(x=variance.3, y=loglikelihood, fill=factor(variance.2), colour=factor(variance.2))) + 
+  geom_line(size=1)
+```
+
+**Conclusion: ** For unemployment dataset, the MLE of our parameters are c(10,10,4), which is different from c(10,7,4).
+
+
+
+# MAP Estimate
+
+As we know, $Posteriori \propto Prior * Likelihood$. If we take log, then $log(Post) \propto log(Prior) + log(likelihood) + constant$.
+
+## Prior setting 
+
+Let's use Gamma distributions at first:
+
+```{r}
+# gamma prior(ignore the coefficient)
+prior_gamma <- function(alpha, beta, x)  x^(alpha-1)*exp(-x/beta)
+```
+
+Since we have three parameters, let's suppose:
+
+* the product of them is our Prior.
+
+```{r}
+Prior_gamma <- function(sigma, alpha, beta) {
+  sigma[1]^(alpha[1]-1) * exp(-sigma[1]/beta[1]) *
+  sigma[1]^(alpha[1]-1) * exp(-sigma[1]/beta[1]) *
+  sigma[1]^(alpha[1]-1) * exp(-sigma[1]/beta[1]) 
+}
+```
+
+```{r}
+logPrior_gamma <- function(sigma, alpha, beta){
+  (alpha[1]-1) * log(sigma[1]) - sigma[1]/beta[1] +
+  (alpha[2]-1) * log(sigma[2]) - sigma[2]/beta[2] +
+  (alpha[3]-1) * log(sigma[3]) - sigma[3]/beta[3] 
+}
+```
+
+
+
+## Posterior (prior is gamma)
+
+```{r}
+# define the log likelihood function
+
+loglikelihood <- function(data, trend, season, sigma){
+  
+  n <- length(data)
+  a <- 0
+  for (i in 12:n)  a <- a + (sum(season[(i-11):i]))^2
+  l <- -(n-11)/2 * log(sigma[1]) - 
+    (n-11)/2 * log(sigma[2]) - (n-11)/2 * log(sigma[3]) -
+    sum((data[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/(2*sigma[1]) - 
+    sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/(2*sigma[2]) - 
+    a / (2*sigma[3])
+  return(l)
+  
+}
+```
+
+```{r}
+logposterior <- function(data, trend, season, sigma, alpha, beta){
+  loglikelihood(data,trend,season,sigma) + logPrior_gamma(sigma, alpha, beta)
+}
+```
+
+```{r}
+logposterior_matrix <- function(data, alpha, beta){
+  LP <- c()
+  index <- c()
+   for (i in 1:10) {
+     for (j in 1:10) {
+       for (k in 1:10) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = k),
+                 H = i)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i, j, k)
+         
+         lp <- logposterior(data, ssm_trend, ssm_seasonal, sigma, alpha, beta)
+         LP <- c(LP, lp)
+         index <- rbind(index, sigma)
+         }
+      }
+   }
+  df <- data.frame(variance=index, logposterior=LP)
+  return(df)
+}
+```
+
+```{r}
+unemp_logposteriormatrix <- logposterior_matrix(unemp,alpha=c(10,5,0.5), beta=c(1,1,2))
+unemp_logposteriormatrix[which.max(unemp_logposteriormatrix$logposterior),]
+```
+
+
+Let's see:
+
+```{r}
+unemp_LP_gammamatrix <- c()
+for (i in 1:5) {
+  for (j in 1:5) {
+    for (k in 1:5) {
+      alpha <- c(2^i,2^j,2^k)
+      beta <- c(10,5,1)/alpha
+ 
+      unemp_logposteriormatrix <- logposterior_matrix(unemp,alpha, beta)
+      
+      unemp_LP_gamma <-
+        c(unemp_logposteriormatrix[which.max(unemp_logposteriormatrix$logposterior),], alpha, beta)
+      unemp_LP_gammamatrix <- rbind(unemp_LP_gammamatrix, unemp_LP_gamma)
+    }
+  }
+}
+
+```
+
+```{r}
+class(unemp_LP_gammamatrix)
+head(unemp_LP_gammamatrix)
+write.csv(unemp_LP_gammamatrix, 'C:\\Users\\GuoLY\\Desktop\\markdown\\MLE & MAP\\unemp_LP_gammamatrix.csv')
+```
+
+
+
+
+
+
+
+
+
+

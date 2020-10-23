@@ -1,0 +1,42 @@
+---
+title: "report0411"
+author: "Linyi Guo"
+date: "2020/4/11"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r include=FALSE}
+rm(list = ls())
+library(plotly)
+load('C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file10/.RData')
+load('C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file10/loglikelihood_eg8.RData')
+```
+
+Hi Professor,
+
+This document is to show my problem in finding the parametric approximation of the loglikelihood function. 
+
+One known fact:
+
+* when the length of data double, the loglikelihood double(other parameters are the same)
+
+![length](C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file10/figures/lengthdouble.png)
+*where the x-axis is the irregular variance; the black line is the loglikelihood of one dataset at length 30 years, red line is the loglikelihood of the first 15 years, blue line is taking the half of the black line*
+
+![length2](C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file10/figures/lengthdouble2.png)
+
+*where the x-axis is the trend variance; the black line is the loglikelihood of one dataset at length 30 years, red line is the loglikelihood of the first 15 years, blue line is taking the half of the black*
+
+* I have also checked other situations such as doubling the variances without changing other parameters, but the pattern is not very obvious. 
+
+
+One distribution of the loglikelihood is:(it may take some time to load the figure, it's interacitve)
+
+```{r echo=FALSE}
+ll1_matrix <- matrix(loglikelihood_eg8[,4], nrow=1000, byrow=TRUE)
+plot_ly(z= ll1_matrix, showscale = FALSE) %>% add_surface()
+```
+
+We have seen the similar figure before. I have thought about this problem over the last two days, but didn't come up with an efficient way to solve it; I found some package to auto-fit a distribution like *fitdistrplus*, but they are designed for *univariate probability* distributions. Therefore

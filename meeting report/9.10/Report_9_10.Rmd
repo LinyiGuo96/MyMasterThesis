@@ -1,0 +1,514 @@
+---
+title: "Report_9_10"
+author: "LinyiGuo"
+output:
+  html_document: default
+  pdf_document: default
+fontsize: 12pt
+---
+
+All results are from R. The main package are *seasonal* and *KFAS*. The first is to apply *X-13ARIMA-SEATS* and the later is for *Kalman Filter*. 
+
+We use three data sets here, which are Nike and Adidas quarterly sales from 2005-2018 and the classical airpassengers(monthly data) from 1949-1960.
+
+**NOTE**: The sales data of Nike and Adidas could be improper possibly. They are from [NIKE](https://www.macrotrends.net/stocks/charts/NKE/nike/revenue) and [ADIDAS](https://www.macrotrends.net/stocks/charts/ADDYY/adidas-ag/revenue).
+  
+
+I will skip lots of introduction and text description of this problem here.
+
+# Data Visualizaiton
+
+```{r echo=FALSE}
+rm(list=ls())
+set.seed(9483)
+options(digits = 4)
+```
+
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+library(ggfortify)
+library(forecast)
+library(tseries)
+```
+
+```{r echo=FALSE}
+# Load Data
+data_nike <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\nike.csv',header = TRUE)
+data_adi <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\adidas.csv',header = TRUE)
+data("AirPassengers")
+
+data_nike <- ts(rev(data_nike[3:58,2]), frequency=4, start=c(2005,1))
+data_adi <- ts(rev(data_adi[2:57,2]), frequency=4, start=c(2005,1))
+data_ap <- AirPassengers
+
+# plot
+par(mar=c(9,4,9,4))
+par(mfrow=c(1,3))
+plot(data_nike,ylab='',main="Nike Quarterly Sales")
+plot(data_adi,ylab='',main="Adidas Quarterly Sales")
+plot(data_ap,ylab='',main="Air Passengers")
+par(mfrow=c(1,1))
+```
+
+We can tell the difference of airpassengers is becoming larger as time goes on, which means we need to take logarithm before decomposing it if we treat the relation among components as *addictive* instead of *multiplicative*. This transformation process will be done automatically in *seasonal* but not in *KFAS*.
+
+Let's have a look at the logarithm of airpassengers before moving on.
+
+```{r echo=FALSE}
+plot(log(data_ap),ylab='',main="Log of Air Passengers from 1949 to 1960")
+```
+
+# Seasonal Adjustment
+
+The values of parameters in SSMs for three cases we given at the beginning are $\sigma_T^2=1$, $\sigma_S^2=0.1$ and $\sigma_\epsilon^2=1$. $\sigma_\epsilon^2$ is the variance of the irregular in the observation equation.
+
+```{r echo=FALSE}
+# nike
+## build TRAMO-SEATS
+mod_nike_seats <- seas(data_nike)
+
+## build x-11
+mod_nike_x11 <- seas(data_nike, x11='')
+
+## build ssm
+mod_nike_ssm <- SSModel(data_nike ~ SSMtrend(1, Q = list(1)) + 
+                        SSMseasonal(4,Q=0.1, sea.type = "trigonometric"), H=1)
+out_nike_ssm <- KFS(mod_nike_ssm)
+
+
+# adi
+## build TRAMO-SEATS
+mod_adi_seats <- seas(data_adi)
+
+## build x-11
+mod_adi_x11 <- seas(data_adi, x11='')
+
+## build ssm
+mod_adi_ssm <- SSModel(data_adi ~ SSMtrend(1, Q = list(1)) + 
+                        SSMseasonal(4,Q=0.1, sea.type = "trigonometric"), H=1)
+out_adi_ssm <- KFS(mod_adi_ssm)
+
+
+# airpassengers
+## build TRAMO-SEATS
+mod_ap_seats <- seas(data_ap)
+
+## build x-11
+mod_ap_x11 <- seas(data_ap, x11='')
+
+## build ssm
+mod_ap_ssm <- SSModel(log(data_ap) ~ SSMtrend(1, Q = list(1)) + 
+                        SSMseasonal(12,Q=0.1, sea.type = "trigonometric"), H=1)
+out_ap_ssm <- KFS(mod_ap_ssm)
+
+```
+
+
+```{r echo=FALSE}
+par(mfrow=c(1,3))
+par(mar=c(9,4,9,4))
+
+# nike
+plot(series(mod_nike_seats,"s11"),ylab='',ylim=c(3000,10000))
+par(new=TRUE)
+plot(series(mod_nike_x11,"d11"),ylab='',ylim=c(3000,10000),col=2,lty=2)
+par(new=TRUE)
+plot(data_nike-rowSums(coef(out_nike_ssm,states = 'seasonal')[,c(1,3)]),
+     ylab='',ylim=c(3000,10000),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal adjustment(Nike)')
+
+# adi
+plot(series(mod_adi_seats,"s11"),ylab='',ylim=c(1000,7000))
+par(new=TRUE)
+plot(series(mod_adi_x11,"d11"),ylab='',ylim=c(1000,7000),col=2,lty=2)
+par(new=TRUE)
+plot(data_adi-rowSums(coef(out_adi_ssm,states = 'seasonal')[,c(1,3)]),
+     ylab='',ylim=c(1000,7000),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal adjustment(Adi)')
+
+# airpassengers
+plot(series(mod_ap_seats,"s11"),ylab='',ylim=c(100,500))
+par(new=TRUE)
+plot(series(mod_ap_x11,"d11"),ylab='',ylim=c(100,500),col=2,lty=2)
+par(new=TRUE)
+plot(exp(log(data_ap)-
+       rowSums(coef(out_ap_ssm,states = 'seasonal')[,c(1,3,5,7,9,11)])),
+     ylab='',ylim=c(100,500),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal adjustment(airpassengers)')
+
+par(mfrow=c(1,1))
+```
+
+Take the airpassenger's results(below picture) for example: we can see the **green** line is sort of smoother compared with the others.  
+
+```{r echo=FALSE}
+plot(series(mod_ap_seats,"s11"),ylab='',ylim=c(100,500))
+par(new=TRUE)
+plot(series(mod_ap_x11,"d11"),ylab='',ylim=c(100,500),col=2,lty=1)
+par(new=TRUE)
+plot(exp(log(data_ap)-
+       rowSums(coef(out_ap_ssm,states = 'seasonal')[,c(1,3,5,7,9,11)])),
+     ylab='',ylim=c(100,500),col=3,lty=1)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,1,1))
+title('Seasonal adjustment(airpassengers)')
+```
+
+# Decomposition
+
+The seperate component from these three methods are:
+
+## Trend
+
+```{r echo=FALSE}
+par(mfrow=c(1,3))
+par(mar=c(9,4,9,4))
+
+# nike
+plot(series(mod_nike_seats,"s12"),ylab='',ylim=c(3000,10000))
+par(new=TRUE)
+plot(series(mod_nike_x11,"d12"),ylab='',ylim=c(3000,10000),col=2,lty=2)
+par(new=TRUE)
+plot(coef(out_nike_ssm,states = 'trend'),
+     ylab='',ylim=c(3000,10000),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Trend(Nike)')
+
+# adi
+plot(series(mod_adi_seats,"s12"),ylab='',ylim=c(1000,7000))
+par(new=TRUE)
+plot(series(mod_adi_x11,"d12"),ylab='',ylim=c(1000,7000),col=2,lty=2)
+par(new=TRUE)
+plot(coef(out_adi_ssm,states = 'trend'),
+     ylab='',ylim=c(1000,7000),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Trend(Adi)')
+
+# airpassengers
+plot(series(mod_ap_seats,"s12"),ylab='',ylim=c(100,500))
+par(new=TRUE)
+plot(series(mod_ap_x11,"d12"),ylab='',ylim=c(100,500),col=2,lty=2)
+par(new=TRUE)
+plot(coef(out_ap_ssm,states = 'trend'),
+     ylab='',ylim=c(100,500),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Trend(airpassengers)')
+
+```
+
+## Irregular
+
+From the figure below, we can find that compared with that from StatCan, the basic difference is that our irregular from SSM is NOT a flat line. To make it to be flat, we can force $\sigma_S^2=0$(or some very small number), which we will see later.
+
+```{r echo=FALSE}
+par(mfrow=c(1,3))
+par(mar=c(9,4,9,4))
+
+# nike
+plot(series(mod_nike_seats,"s13"),ylab='',ylim=c(-650,300))
+par(new=TRUE)
+plot(series(mod_nike_x11,"d13"),ylab='',ylim=c(-650,300), col=2,lty=2)
+par(new=TRUE)
+plot(data_nike-rowSums(coef(out_nike_ssm)[,c(1,2,4)]),
+     ylab='',ylim=c(-650,300),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Residuals(Nike)')
+
+# adi
+plot(series(mod_adi_seats,"s13"),ylab='',ylim=c(-200,180))
+par(new=TRUE)
+plot(series(mod_adi_x11,"d13"),ylab='',ylim=c(-200,180), col=2,lty=2)
+par(new=TRUE)
+plot(data_adi - rowSums(coef(out_adi_ssm)[,c(1,2,4)]),
+     ylab='',ylim=c(-200,180),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Residuals(Adi)')
+
+# air passengers
+plot(series(mod_ap_seats,"s13"),ylab='',ylim=c(0.94,1.11))
+par(new=TRUE)
+plot(series(mod_ap_x11,"d13"),ylab='',ylim=c(0.94,1.11),col=2,lty=2)
+par(new=TRUE)
+plot(data_ap/exp(rowSums(coef(out_ap_ssm)[,c(1,2,4,6,8,10,12)])),
+     ylab='',ylim=c(0.94,1.11),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Residuals(Airpassengers)')
+
+```
+
+
+## Seasonal
+
+**Question**: The seasonal component from *SEATS* and *X-11* should be invariant but here they are not. How to control them since they are changeable?
+
+```{r echo=FALSE}
+par(mfrow=c(1,3))
+par(mar=c(9,4,9,4))
+
+# nike
+plot(series(mod_nike_seats,"s10"),ylab='',ylim=c(-400,500))
+par(new=TRUE)
+plot(series(mod_nike_x11,"d10"),ylab='',ylim=c(-400,500),col=2,lty=2)
+par(new=TRUE)
+plot(ts(rowSums(coef(out_nike_ssm,states = 'seasonal')[,c(1,3)]),
+        frequency = 4, start = c(2005,1)),
+     ylab='',ylim=c(-400,500),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal(Nike)')
+
+# adi
+plot(series(mod_adi_seats,"s10"),ylab='',ylim=c(-700,700))
+par(new=TRUE)
+plot(series(mod_adi_x11,"d10"),ylab='',ylim=c(-700,700),col=2,lty=2)
+par(new=TRUE)
+plot(ts(rowSums(coef(out_adi_ssm,states = 'seasonal')[,c(1,3)]),
+        frequency = 4, start = c(2005,1)),
+     ylab='',ylim=c(-700,700),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal(Adi)')
+
+# airpassengers
+plot(series(mod_ap_seats,"s10"),ylab='',ylim=c(0.7,1.4))
+par(new=TRUE)
+plot(series(mod_ap_x11,"d10"),ylab='',ylim=c(0.7,1.4),col=2,lty=2)
+par(new=TRUE)
+plot(ts(exp(rowSums(coef(out_ap_ssm,states = 'seasonal')[,c(1,3,5,7,9,11)])),
+        frequency = 12, start = c(1949,1)),
+     ylab='',ylim=c(0.7,1.4),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal(airpassengers)')
+
+```
+
+Again, we pick out the last one, Airpassengers:
+
+```{r echo=FALSE}
+plot(series(mod_ap_seats,"s10"),ylab='',ylim=c(0.7,1.4))
+par(new=TRUE)
+plot(series(mod_ap_x11,"d10"),ylab='',ylim=c(0.7,1.4),col=2,lty=2)
+par(new=TRUE)
+plot(ts(exp(rowSums(coef(out_ap_ssm,states = 'seasonal')[,c(1,3,5,7,9,11)])),
+        frequency = 12, start = c(1949,1)),
+     ylab='',ylim=c(0.7,1.4),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Seasonal(airpassengers)')
+```
+
+**Note**: To have the similar figure appeared in the report from StatCan, we can add a cycle, then get the below figure:
+
+```{r echo=FALSE}
+for(i in 1:12){
+  plot(series(mod_ap_seats,"s10")[(1+(i-1)*12):(i*12)],ty='l',ylab='',ylim=c(0.7,1.4),lty=1)
+  par(new=TRUE)
+  plot(series(mod_ap_x11,"d10")[(1+(i-1)*12):(i*12)],ty='l',ylab='',ylim=c(0.7,1.4),col=2,lty=2)
+  par(new=TRUE)
+  plot(exp(rowSums(coef(out_ap_ssm,states = 'seasonal')[,c(1,3,5,7,9,11)])[(1+(i-1)*12):(i*12)]),
+     ylab='',ylim=c(0.7,1.4),ty='l',col=3,lty=4)
+  par(new=TRUE)
+}
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+```
+
+# Case $\sigma_\epsilon^2 = 0$
+
+We only change the variance of irregular component in SSMs from 1 to 0.
+
+```{r echo=FALSE}
+# nike
+mod_nike_ssm1 <- SSModel(data_nike ~ SSMtrend(1, Q = list(1)) + 
+                        SSMseasonal(4,Q=0.1, sea.type = "trigonometric"), H=0)
+out_nike_ssm1 <- KFS(mod_nike_ssm1)
+
+
+# adi
+mod_adi_ssm1 <- SSModel(data_adi ~ SSMtrend(1, Q = list(1)) + 
+                        SSMseasonal(4,Q=0.1, sea.type = "trigonometric"), H=0)
+out_adi_ssm1 <- KFS(mod_adi_ssm1)
+
+# ap
+mod_ap_ssm1 <- SSModel(log(data_ap) ~ SSMtrend(1, Q = list(1)) + 
+                        SSMseasonal(12,Q=0.1, sea.type = "trigonometric"), H=0)
+out_ap_ssm1 <- KFS(mod_ap_ssm1)
+
+```
+
+## Irregular
+
+```{r echo=FALSE}
+par(mfrow=c(1,3))
+par(mar=c(9,4,9,4))
+
+# nike
+plot(series(mod_nike_seats,"s13"),ylab='',ylim=c(-650,300))
+par(new=TRUE)
+plot(series(mod_nike_x11,"d13"),ylab='',ylim=c(-650,300), col=2,lty=2)
+par(new=TRUE)
+plot(data_nike-rowSums(coef(out_nike_ssm1)[,c(1,2,4)]),
+     ylab='',ylim=c(-650,300),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Residuals(Nike)')
+
+# adi
+plot(series(mod_adi_seats,"s13"),ylab='',ylim=c(-200,180))
+par(new=TRUE)
+plot(series(mod_adi_x11,"d13"),ylab='',ylim=c(-200,180), col=2,lty=2)
+par(new=TRUE)
+plot(data_adi - rowSums(coef(out_adi_ssm1)[,c(1,2,4)]),
+     ylab='',ylim=c(-200,180),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Residuals(Adi)')
+
+# air passengers
+plot(series(mod_ap_seats,"s13"),ylab='',ylim=c(0.94,1.11))
+par(new=TRUE)
+plot(series(mod_ap_x11,"d13"),ylab='',ylim=c(0.94,1.11),col=2,lty=2)
+par(new=TRUE)
+plot(data_ap/exp(rowSums(coef(out_ap_ssm1)[,c(1,2,4,6,8,10,12)])),
+     ylab='',ylim=c(0.94,1.11),col=3,lty=4)
+legend('topleft',c('seats','x11','ssm'),col=c(1,2,3),lty=c(1,2,4))
+title('Residuals(Airpassengers)')
+```
+
+Since the irregular component is almost zero, the seasonal and trend components must be different from before.
+
+## Seasonal Adjustment
+
+```{r echo=FALSE}
+par(mfrow=c(1,3))
+par(mar=c(9,4,9,4))
+
+# nike
+plot(data_nike-rowSums(coef(out_nike_ssm,states = 'seasonal')[,c(1,3)]),
+     ylab='',ylim=c(3000,10000))
+par(new=TRUE)
+plot(data_nike-rowSums(coef(out_nike_ssm1,states = 'seasonal')[,c(1,3)]),
+     ylab='',ylim=c(3000,10000),lty=2, col=2)
+legend('topleft',c('Var=1','Var=0'),lty = c(1,2), col=c(1,2))
+title('Seasonal adjustment(Nike)')
+
+# adi
+plot(data_adi-rowSums(coef(out_adi_ssm,states = 'seasonal')[,c(1,3)]),
+     ylab='',ylim=c(1000,7000))
+par(new=TRUE)
+plot(data_adi-rowSums(coef(out_adi_ssm1,states = 'seasonal')[,c(1,3)]),
+     ylab='',ylim=c(1000,7000),lty=2, col=2)
+legend('topleft',c('Var=1','Var=0'),lty = c(1,2), col=c(1,2))
+title('Seasonal adjustment(Adi)')
+
+# airpassengers
+plot(exp(log(data_ap)-
+       rowSums(coef(out_ap_ssm,states = 'seasonal')[,c(1,3,5,7,9,11)])),
+     ylab='',ylim=c(100,500))
+par(new=TRUE)
+plot(exp(log(data_ap)-
+       rowSums(coef(out_ap_ssm,states = 'seasonal')[,c(1,3,5,7,9,11)])),
+     ylab='',ylim=c(100,500),col=2,lty=2)
+legend('topleft',c('Var=1','Var=0'),lty = c(1,2), col=c(1,2))
+title('Seasonal adjustment(airpassengers)')
+
+
+```
+
+
+## Trend
+
+```{r echo=FALSE}
+par(mfrow=c(1,3))
+par(mar=c(9,4,9,4))
+
+# Nike
+plot(coef(out_nike_ssm,states = 'trend'),
+     ylab='',ylim=c(3000,10000),col=1)
+par(new=TRUE)
+plot(coef(out_nike_ssm1,states = 'trend'),
+     ylab='',ylim=c(3000,10000),col=2,lty=2)
+legend('topleft',c('Var=1','Var=0'),lty = c(1,2), col=c(1,2))
+title("Trends(Nike)")
+
+# Adi
+plot(coef(out_adi_ssm,states = 'trend'),
+     ylab='',ylim=c(1000,7000),col=1)
+par(new=TRUE)
+plot(coef(out_adi_ssm1,states = 'trend'),
+     ylab='',ylim=c(1000,7000),col=2,lty=2)
+legend('topleft',c('Var=1','Var=0'),lty = c(1,2), col=c(1,2))
+title("Trends(Adi)")
+
+# ap
+plot(exp(coef(out_ap_ssm,states = "trend")),ylab='',ylim=c(100,500),col=1)
+par(new=TRUE)
+plot(exp(coef(out_ap_ssm1,states="trend")),ylab='',ylim=c(100,500),col=2,lty=2)
+legend('topleft',c('Var=1','Var=0'),lty = c(1,2), col=c(1,2))
+title("Trends(Airpassengers)")
+```
+
+## Seasonal
+
+```{r echo=FALSE}
+par(mfrow=c(1,3))
+par(mar=c(9,4,9,4))
+
+# Nike
+for(i in 1:14){
+  plot(rowSums(coef(out_nike_ssm,
+                    states="seasonal")[,c(1,3)])[(1+4*(i-1)):(4*i)],
+       ylab='',ylim=c(-400,500),ty='l')
+  par(new=TRUE)
+  plot(rowSums(coef(out_nike_ssm1,
+                    states="seasonal")[,c(1,3)])[(1+4*(i-1)):(4*i)],
+       ylab='',ylim=c(-400,500),col=2,ty='l',lty=2)
+  par(new=TRUE)
+}
+legend('topleft',c('Var=1','Var=0'),lty=c(1,2), col=c(1,2))
+title("Seasonal(Nike)")
+
+# Adi
+for(i in 1:14){
+  plot(rowSums(coef(out_adi_ssm,
+                    states="seasonal")[,c(1,3)])[(1+4*(i-1)):(4*i)],
+       ylab='',ylim=c(-700,700),ty='l')
+  par(new=TRUE)
+  plot(rowSums(coef(out_adi_ssm1,
+                    states="seasonal")[,c(1,3)])[(1+4*(i-1)):(4*i)],
+       ylab='',ylim=c(-700,700),col=2,ty='l',lty=2)
+  par(new=TRUE)
+}
+legend('topleft',c('Var=1','Var=0'),lty=c(1,2), col=c(1,2))
+title("Seasonal(Adi)")
+
+# airpassengers
+for(i in 1:12){
+  plot(exp(rowSums(coef(out_ap_ssm,states = 'seasonal')[,c(1,3,5,7,9,11)])[(1+(i-1)*12):(i*12)]),
+     ylab='',ylim=c(0.7,1.4),ty='l')
+  par(new=TRUE)
+  plot(exp(rowSums(coef(out_ap_ssm1,states = 'seasonal')[,c(1,3,5,7,9,11)])[(1+(i-1)*12):(i*12)]),
+     ylab='',ylim=c(0.7,1.4),ty='l',col=2,lty=2)
+  par(new=TRUE)
+}
+legend('topleft',c('Var=1','Var=0'),lty=c(1,2), col=c(1,2))
+title("Seasonal(Airpassengers)")
+
+```
+
+**NOTE: Similarly, we can achieve any kind of smoothness of each component by forcing the corresponding variance to zero(or a very small number).**
+
+
+# Improvement
+
+* We have mentioned before: the seasonal component from *X-13ARIMA-SEATS* should be invariant within each year, why are our results changeable? And given they are changeable, how to control them? 
+
+* As we know, we need to detect and remove the outliers and calendar effects before decomposing one time series. So:   1) how to detect and remove them? the details about regARIMA and TRAMO(working on it but have not solved, this is the reason why I didn't do data preprocessing in SSMs above);   2) after decomposing, how to deal with them when analysing? For forecast, suppose we know the coefficients in regARIMA, what are the values of the calendar effects and etc?    In conclusion, how to do preprocessing in SSMs?
+
+* The further questions are about the exploration of prior distributions(i.e. the initial values ?) and bayesian stuff.
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,742 @@
+---
+  title: "SimulationToFindThePrior"
+author: "Linyi Guo"
+date: "2020/1/7"
+output: 
+  html_document: 
+    toc: true
+---
+
+See my thoughtS in 随笔杂文 2020.1.7.(MY IPAD ONENOTE)
+
+```{r include=FALSE}
+set.seed(9483)
+rm(list=ls())
+```
+
+```{r}
+# import package
+library(seasonal)
+library(forecast)
+library(KFAS)
+```
+
+# SIMULATION
+
+To avoid the potential mistake, I only simulate the datasets from ARIMA(1,1,1)(0,1,1)
+
+
+```{r}
+
+model <- Arima(ts(rnorm(120),start=c(1980,01),frequency =12), order=c(1,1,1), seasonal=c(0,1,1),
+             fixed=c(phi=runif(1), theta=runif(1), Theta=runif(1)))
+data <- simulate(model, nsim=180)
+plot(data,type='l')
+min(data)
+
+
+model <- Arima(ts(rnorm(120),start=c(1980,01),frequency =12), order=c(1,1,1), seasonal=c(1,1,1),
+             fixed=c(phi=runif(1), theta=runif(1), Phi=runif(1), Theta=runif(1)))
+data <- simulate(model, nsim=180)
+plot(data,type='l')
+min(data)
+```
+
+## Define a function to simulate data that we want
+
+```{r}
+simulation1 <- function(length){
+     
+   model <- Arima(ts(rnorm(120),start=c(1980,01),frequency =12), order=c(1,1,1),   
+                  seasonal=c(0,1,1), fixed=c(phi=runif(1), theta=runif(1),
+                                             Theta=runif(1))
+                  )
+   
+   data <- simulate(model, nsim=length)
+   
+   # because if we need to take log later, data must be positive
+   if(min(data) <= 0) data <- data - min(data) + runif(1)
+   else data <- data
+   
+   return(data)
+  
+}
+```
+
+
+## function to simulate a datalist with a lot of datasets
+
+```{r}
+simlist1 <- function(n,length) {   
+  
+  Datalist <- list()
+  
+  for (i in 1:n)  Datalist[[i]] <- simulation1(length)
+  
+  return(Datalist)  
+  
+}
+
+```
+
+```{r}
+set.seed(9483)
+
+datalist1 <- simlist1(100, 120)
+datalist2 <- simlist1(100, 180)
+datalist3 <- simlist1(100, 240)
+```
+
+
+Until this step, datalist is basically what I want to use in the following analysis, but we still have one more step: that is to preprocessing.
+
+
+
+
+# Preprocessing
+
+```{r}
+# define a function for outliers and log-transformation
+preprocess <- function(x11) {
+  
+  if(transformfunction(x11) == 'log') 
+    data <- log(series(x11, 'b1'))
+  else
+    data <- series(x11, 'b1')
+
+  return(data)
+}
+```
+
+
+```{r}
+# build model list
+x11list1 <- lapply(datalist1, function(x) seas(x, x11=''))
+x11list2 <- lapply(datalist2, function(x) seas(x, x11=''))
+x11list3 <- lapply(datalist3, function(x) seas(x, x11=''))
+
+
+```
+
+I can't apply it to a large list(eg. a list with 1000 datasets) because of the following error:
+
+```
+Error: X-13 run failed
+
+Errors:
+- A model estimation error has occurred during AIC testing within the
+  automatic model identification procedure. The error message appears
+  below.
+- Estimation failed to converge -- maximum iterations reached
+```
+
+```{r}
+# obtain the preprocessed datalist denoted as Datalist
+Datalist1 <- lapply(x11list1, preprocess)
+Datalist2 <- lapply(x11list2, preprocess)
+Datalist3 <- lapply(x11list3, preprocess)
+
+```
+
+Now we finished this step, then we need to find the 'ideal' values of parameters in these datasets.
+
+
+# Building Our Prior
+
+## Searching for the 'best' value
+
+**Loss function**
+
+```{r}
+
+Dif1 <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_irregular <- data[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+ 
+  D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+    sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+```
+
+**Exhaustion function**
+
+```{r}
+
+exhaustion1 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+  
+   for (i in 1:100) {
+     for (j in 1:100) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j*0.1)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i*0.1)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i*0.1, j*0.1, 1)
+           
+           dif <- Dif1(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```
+# system.time(exhaustion1(Datalist1[[1]]))
+#   user  system  elapsed
+#  189.80 237.43  427.96 
+
+idevallist1 <- lapply(Datalist1, exhaustion1)
+
+```
+
+```
+idevalmat1 <- c()
+for (i in 1:100){
+  
+  ideval <- idevallist1[[i]][which.min(idevallist1[[i]]$difference),c(1,2)]
+  idevalmat1 <- rbind(idevalmat1, ideval)
+  
+}
+
+rownames(idevalmat1) <- c(1:100)
+head(idevalmat1)
+
+```
+
+```
+write.csv(idevalmat1, "C:\\Users\\GuoLY\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\idevalmat1.csv")
+# But I changed that to idevalmat1_10.csv later
+```
+
+```{r}
+
+idevalmat1_10 <- read.csv("C:\\Users\\GuoLY\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\idevalmat1_10.csv")
+```
+
+
+The result is not very good so I decide to modify the code a little bit and run them again:
+
+```{r}
+
+exhaustion1 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+  
+   for (i in 1:100) {
+     for (j in 1:100) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j*0.2)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i*0.2)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i*0.2, j*0.2, 1)
+           
+           dif <- Dif1(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```
+system.time(exhaustion1(Datalist1[[1]]))
+
+#用户   系统   流逝 
+#189.25 191.60 382.56 
+```
+
+```
+
+idevallist1 <- lapply(Datalist1, exhaustion1)
+```
+
+```
+idevalmat1 <- c()
+
+for (i in 1:100){
+  ideval <- idevallist1[[i]][which.min(idevallist1[[i]]$difference),c(1,2)]
+  idevalmat1 <- rbind(idevalmat1, ideval)
+}
+
+
+rownames(idevalmat1) <- c(1:100)
+
+```
+
+And then please output the data frame `idevalmat1`.
+
+```
+write.csv(idevalmat1, "C:\\Users\\GuoLY\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\idevalmat1_1.csv")
+```
+
+
+```{r}
+idevalmat1_1 <- read.csv("C:\\Users\\GuoLY\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\idevalmat1_1.csv")
+```
+
+
+```{r}
+hist(idevalmat1_1[,2])
+
+hist(idevalmat1_1[,3])
+```
+
+
+```
+
+set.seed(521)
+
+datalist1 <- simlist1(100, 120)
+
+x11list1 <- lapply(datalist1, function(x) seas(x, x11=''))
+
+Datalist1 <- lapply(x11list1, preprocess)
+
+```
+
+```
+idevallist1_2 <- lapply(Datalist1, exhaustion1)
+```
+
+```
+idevalmat1_2 <- c()
+
+for (i in 1:100){
+  ideval <- idevallist1_2[[i]][which.min(idevallist1_2[[i]]$difference),c(1,2)]
+  idevalmat1_2 <- rbind(idevalmat1_2, ideval)
+}
+
+
+rownames(idevalmat1_2) <- c(1:100)
+
+```
+
+```
+write.csv(idevalmat1_2, "C:\\Users\\GuoLY\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\idevalmat1_2.csv")
+```
+
+
+
+# Amazing Finding!
+
+I just heard one very useful package named `parallel` and tried it on a toy problem. The result is so amazing! The running time is just one quarter of the previous when I called 4 cores of my computer! Shout out to 老臧！
+
+# Back to game
+
+```
+
+cl <- makeCluster(4)
+
+fun1 <- function(x){
+  
+  library(seasonal)
+  seas(x, x11='') 
+  
+}
+
+preprocess <- function(x11) {
+  
+  if(transformfunction(x11) == 'log') 
+    data <- log(series(x11, 'b1'))
+  else
+    data <- series(x11, 'b1')
+  
+  return(data)
+}
+
+#Dif1 <- function(x11, ssm, data, sigma){
+#
+#  x11_trend <- series(x11, 'd12')
+#  x11_seasonal <- series(x11, 'd10')
+#  x11_irregular <- series(x11, 'd13')
+#  
+#  ssm_trend <- coef(ssm, states = 'trend')
+#  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+#  ssm_irregular <- data[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+# 
+#  D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+#    sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+#    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+#    
+#  return(D)
+#}
+
+exhaustion1 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+  
+   for (i in 1:100) {
+     for (j in 1:100) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j*0.2)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i*0.2)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i*0.2, j*0.2, 1)
+           
+           ### difference ###
+           x11_trend <- series(x11, 'd12')
+           x11_seasonal <- series(x11, 'd10')
+           x11_irregular <- series(x11, 'd13')
+           
+           ssm_trend <- coef(ssm, states = 'trend')
+           ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+           ssm_irregular <- data[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+          
+           D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+             sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+             sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+           ### end ###
+           
+           Difference <- c(Difference, D)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+
+set.seed(1)
+
+datalist1 <- simlist1(100, 120)
+
+# This is to build the package environment for each core
+
+clusterEvalQ(cl,{
+  library(seasonal)
+  library(KFAS)
+  } 
+)
+
+
+system.time({
+  
+  x11list1 <- parLapply(cl, datalist1, fun1 )
+  
+  Datalist1 <- parLapply(cl, x11list1, preprocess )
+
+  idevallist1_3 <- parLapply(cl, Datalist1, exhaustion1)
+  
+  idevalmat1_3 <- c()
+  
+  for (i in 1:100){
+    ideval <- idevallist1[[i]][which.min(idevallist1[[i]]$difference),c(1,2)]
+    idevalmat1_3 <- rbind(idevalmat1_3, ideval)
+  }
+  
+  rownames(idevalmat1_3) <- c(1:100)
+
+  
+})
+
+stopCluster(cl)
+
+write.csv(idevalmat1_3, "C:\\Users\\GuoLY\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\idevalmat1_3.csv")
+```
+
+# idevalmat1_4
+
+```
+rm(list=ls())
+
+library(parallel)
+library(forecast)
+```
+```
+# functions
+
+simulation1 <- function(length){
+     
+   model <- Arima(ts(rnorm(120),start=c(1980,01),frequency =12), order=c(1,1,1),   
+                  seasonal=c(0,1,1), fixed=c(phi=runif(1), theta=runif(1),
+                                             Theta=runif(1))
+                  )
+   
+   data <- simulate(model, nsim=length)
+   
+   # because if we need to take log later, data must be positive
+   if(min(data) <= 0) data <- data - min(data) + runif(1)
+   else data <- data
+   
+   return(data)
+  
+}
+
+simlist1 <- function(n,length) {   
+  
+  Datalist <- list()
+  
+  for (i in 1:n)  Datalist[[i]] <- simulation1(length)
+  
+  return(Datalist)  
+  
+}
+
+fun1 <- function(x){
+  
+  library(seasonal)
+  seas(x, x11='') 
+  
+}
+
+preprocess <- function(x11) {
+  
+  if(transformfunction(x11) == 'log') 
+    data <- log(series(x11, 'b1'))
+  else
+    data <- series(x11, 'b1')
+  
+  return(data)
+}
+
+
+
+# put previous functions 'exhaustion1' and 'Dif1' together
+
+exhaustion1 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+  
+   for (i in 1:100) {
+     for (j in 1:100) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j*0.2)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i*0.2)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i*0.2, j*0.2, 1)
+           
+           ### difference ###
+           x11_trend <- series(x11, 'd12')
+           x11_seasonal <- series(x11, 'd10')
+           x11_irregular <- series(x11, 'd13')
+           
+           ssm_trend <- coef(ssm, states = 'trend')
+           ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+           ssm_irregular <- data[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+          
+           D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+             sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+             sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+           ### end ###
+           
+           Difference <- c(Difference, D)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```
+
+set.seed(1)
+datalist1 <- simlist1(100, 120)
+
+cl <- makeCluster(4)
+
+clusterEvalQ(cl,{
+  library(seasonal)
+  library(KFAS)
+  } 
+)
+
+system.time({
+  
+  x11list1 <- parLapply(cl, datalist1, fun1 )
+  
+  Datalist1 <- parLapply(cl, x11list1, preprocess )
+
+  idevallist1_4 <- parLapply(cl, Datalist1, exhaustion1)
+  
+  idevalmat1_4 <- c()
+  
+  for (i in 1:100){
+    ideval <- idevallist1_4[[i]][which.min(idevallist1_4[[i]]$difference),c(1,2)]
+    idevalmat1_4 <- rbind(idevalmat1_4, ideval)
+  }
+  
+  rownames(idevalmat1_4) <- c(1:100)
+
+})
+
+stopCluster(cl)
+
+```
+
+# idevalmat3_3
+
+```
+# functions
+
+simulation1 <- function(length){
+     
+   model <- Arima(ts(rnorm(120),start=c(1980,01),frequency =12), order=c(1,1,1),   
+                  seasonal=c(0,1,1), fixed=c(phi=runif(1), theta=runif(1),
+                                             Theta=runif(1))
+                  )
+   
+   data <- simulate(model, nsim=length)
+   
+   # because if we need to take log later, data must be positive
+   if(min(data) <= 0) data <- data - min(data) + runif(1)
+   else data <- data
+   
+   return(data)
+  
+}
+
+simlist1 <- function(n,length) {   
+  
+  Datalist <- list()
+  
+  for (i in 1:n)  Datalist[[i]] <- simulation1(length)
+  
+  return(Datalist)  
+  
+}
+
+fun1 <- function(x){
+  
+  library(seasonal)
+  seas(x, x11='') 
+  
+}
+
+preprocess <- function(x11) {
+  
+  if(transformfunction(x11) == 'log') 
+    data <- log(series(x11, 'b1'))
+  else
+    data <- series(x11, 'b1')
+  
+  return(data)
+}
+
+
+
+# put previous functions 'exhaustion1' and 'Dif1' together
+
+exhaustion1 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+  
+   for (i in 1:100) {
+     for (j in 1:100) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j*0.2)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i*0.2)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i*0.2, j*0.2, 1)
+           
+           ### difference ###
+           x11_trend <- series(x11, 'd12')
+           x11_seasonal <- series(x11, 'd10')
+           x11_irregular <- series(x11, 'd13')
+           
+           ssm_trend <- coef(ssm, states = 'trend')
+           ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+           ssm_irregular <- data[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+          
+           D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+             sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+             sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+           ### end ###
+           
+           Difference <- c(Difference, D)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```
+
+set.seed(1325341)
+datalist3 <- simlist1(100, 240)
+
+cl <- makeCluster(6)
+
+clusterEvalQ(cl,{
+  library(seasonal)
+  library(KFAS)
+  } 
+)
+
+system.time({
+  
+  x11list3 <- parLapply(cl, datalist3, fun1 )
+  
+  Datalist3 <- parLapply(cl, x11list3, preprocess )
+
+  idevallist3_3 <- parLapply(cl, Datalist3, exhaustion1)
+  
+  idevalmat3_3 <- c()
+  
+  for (i in 1:100){
+    ideval <- idevallist3_3[[i]][which.min(idevallist3_3[[i]]$difference),c(1,2)]
+    idevalmat3_3 <- rbind(idevalmat3_3, ideval)
+  }
+  
+  rownames(idevalmat3_3) <- c(1:100)
+
+})
+
+stopCluster(cl)
+
+write.csv(idevalmat3_3, "C:\\Users\\GuoLY\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\idevalmat3_3.csv")
+
+```

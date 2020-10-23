@@ -1,0 +1,292 @@
+---
+title: "Meeting20200302_StatCan"
+author: "Lin"
+date: "2020/2/29"
+output:
+  pdf_document: 
+    toc: true
+---
+
+\newpage
+
+# Review
+
+When we met last time, I said *the seasonal adjusted series is smoother than those from X-11 and SEATS*, but the problem is: *I fixed the $\sigma_I=\sigma_T=\sigma_S=1$ at that time*. Apparently it is unreasonable to pick up some numbers and assign them to these parameters manually.
+
+Thus, we have a parameter estimation problem here, which is, to some extent, aligned with the first point I mentioned in the **Improvement** part of our last meeting. (My original sentence was *We have mentioned before: the seasonal component from X-13ARIMA-SEATS should be invariant within each year, why are our results changeable? And given they are changeable, how to control them?*, but now we will focus on how to control *SSM*.) Mathematically, we need to estimate three variances in the following state space model:
+
+\begin{align}
+Y_t &= T_t+S_t+I_t \quad & where \quad I_t\sim N(0,\sigma_I^2)\\
+T_t &=T_{t-1}+\epsilon_t \quad &where \quad\epsilon_t\sim N(0,\sigma_T^2) \\
+S_t &=-\sum_{j=1}^{11}S_{t-j}+\eta_t \quad &where \quad \eta_t\sim N(0,\sigma_S^2)
+\end{align}
+
+Let's take a look at the decompostion from **X-11** of the unemployment of US between 1990 and 2015 at first:
+
+```{r,fig.width=10, fig.asp=0.65,echo=FALSE}
+library(seasonal)
+library(KFAS)
+
+unemp_x11 <- seas(unemp, x11='')
+
+par(mfrow=c(2,2))
+plot(unemp,ylab='', main='Unemployment')
+plot(series(unemp_x11, 'd11'),ylab='', main='Seasonal Adjusted')
+plot(series(unemp_x11, 'd12'),ylab='', main='Trend')
+plot(series(unemp_x11, 'd10'),ylab='', main='Seasonal')
+par(mfrow=c(1,1))
+
+```
+
+
+
+# State space modelling with MLEs 
+
+Naturally, we should try the **MLE** as the estimator of our parameter at first. And luckily, R package **KFAS** could help us to find the MLE of these variances.(I will **SKIP** the technical details here at first.) Then we can apply the MLE to the **State space model** and obtain the decompostions. 
+
+```{r, echo=FALSE}
+library(scales)
+unemp_ssm0 <- SSModel(unemp ~ SSMtrend(1, Q=list(NA)) + SSMseasonal(12, sea.type = 'dummy', Q=NA), H=NA)
+unemp_fit0 <- fitSSM(unemp_ssm0, inits=c(1,1,1))
+unemp_kfs0 <- KFS(unemp_fit0$model) 
+
+unemp_ssm5 <- SSModel(unemp ~ SSMtrend(1, Q=list(1.3)) + SSMseasonal(12, sea.type = 'dummy', Q=1), H=1.9)
+unemp_kfs5 <- KFS(unemp_ssm5)
+```
+
+The comparison of seasonal adjusted series and trend series from **X-11** and **SSM_MLE** are as following:
+```{r,fig.asp=1.35,echo=FALSE}
+par(mfrow=c(2,1))
+
+plot(series(unemp_x11, "d11"), ylim=c(5500, 15500), ylab='', lwd=2, col=alpha('black',.5))
+par(new=TRUE)
+plot(unemp - signal(unemp_kfs0, "seasonal")$signal, ylab='', lwd=2, col=alpha('red',.5), ylim=c(5500, 15500))
+title(main='Seasonal adjusted')
+legend('topleft', c('X-11', 'SSM_MLE'), col=c(1,2), lty=1, lwd=2)
+
+
+plot(series(unemp_x11, "d12"),ylim=c(5500, 15500), ylab='', lwd=2, col=alpha('black',.5))
+par(new=TRUE)
+plot(signal(unemp_kfs0, "trend")$signal, ylim=c(5500, 15500), ylab='',col=alpha('red',.5), lwd=2)
+title(main='Trend')
+legend('topleft', c('X-11', 'SSM_MLE'), col=c(1,2), lty=1, lwd=2)
+
+par(mfrow=c(1,1))
+```
+
+As we can see here, the results generating from the model **SSM_MLE** is far away from those from **X-11**.
+
+Therefore, instead of using MLEs, we can define a *loss function* based on our **NEED** and search the *good* values of parameters. 
+
+# State space modelling with LOSS function
+
+In this section, our loss function is defined as 
+$$Loss = \sum(Seasonal_{X-11}-Seasonal_{SSM})^2 + \sum(Trend_{X-11}-Trend_{SSM})^2 + \sum(D(Trend_{X-11})-D(Trend_{SSM}))^2$$
+
+where $D(Trend) = Trend_{2:T} - Trend_{1:(T-1)}$. 
+
+**EXPLAIN**
+
+* the *first sum* is to punish the difference of *seasonal series*, which could be viewed to punish the *seasonal adjusted series* as well; 
+
+* the *second* one is to punish the difference of *trend series*; 
+
+* the *last sum* can be regared to punish the *'derivative'* of our trend series. 
+
+For the moment I used the *grid search* to find the *good* values(*TO BE IMPROVED*). 
+
+The following figures are the comparisons of results from *X-11, SSM_MLE, SSM_LOSS*:
+
+```{r, fig.asp=1.25 ,echo=FALSE}
+par(mfrow=c(2,1))
+
+plot(series(unemp_x11, "d11"), ylim=c(5500, 15500), ylab='', lwd=2, col=alpha('black',.5))
+par(new=TRUE)
+plot(unemp - signal(unemp_kfs0, "seasonal")$signal, ylab='', lwd=2, col=alpha('red',.5), ylim=c(5500, 15500))
+par(new=TRUE)
+plot(unemp - signal(unemp_kfs5, "seasonal")$signal, ylab='', lwd=2, col=alpha('blue',.5), ylim=c(5500, 15500))
+title(main='Seasonal adjusted')
+legend('topleft', c('X-11', 'SSM_MLE', 'SSM_LOSS'), col=c(1,2,4), lty=1, lwd=2)
+
+
+plot(series(unemp_x11, "d12"),ylim=c(5500, 15500), ylab='', lwd=2, col=alpha('black',.5))
+par(new=TRUE)
+plot(signal(unemp_kfs0, "trend")$signal, ylim=c(5500, 15500), ylab='',col=alpha('red',.5), lwd=2)
+par(new=TRUE)
+plot(signal(unemp_kfs5, "trend")$signal, ylim=c(5500, 15500), ylab='',col=alpha('blue',.5), lwd=2)
+title(main='Trend')
+legend('topleft', c('X-11', 'SSM_MLE', 'SSM_LOSS'), col=c(1,2,4), lty=1, lwd=2)
+
+par(mfrow=c(1,1))
+```
+
+We can see that the result from the new model **SSM_LOSS** has a better fit with that from **X-11**, which means our loss function does a better job than MLE.
+
+
+**BUT** We need to notice one thing: although the SSM_LOSS model behaves good, if we want to use it, we still need to *rely* on X-11/SEATS to get the *loss* and the computation is quite heavy based on grid search.  
+
+# Bayesian analysis structure building
+
+To avoid both problems and make use of our loss function at the same time, we could try the following steps, which is based on the empirical Bayesian:
+
+1. Simulate numerous datasets from the **SAME** model;
+
+2. Apply *LOSS function* and *grid search* to 70% simulated datasets, then record the *good* estimators for each dataset;
+
+3. Compute the distributions of *good* estimators from *Step 2* w.r.t trend, seasonal and noise variances seperately, and treat them as our *prior* distributions;
+
+4. For the rest 30% datasets, instead of using *LOSS* function to search the ideal value, based on **Bayesian analysis**, under the prior information we gained above, we use the **MAP** values as parameter estimators;
+
+5. **Repeat** Step2 on the rest 30% datasets, and also compute their **MLEs**;
+
+6. Compare three different estimators of our variances.
+
+
+# Results under Bayes analysis
+
+**REMARK: ** based on Kalman filter, we can prove: for the same structured time series dataset, as long as the ratio of three variances does NOT change, the decompostions will NOT change. Because of this fact, I **fixed** the variance of seasonal series at 1 so only need to care about the values of the other two variances. 
+
+According to steps above:
+
+**I.** I first simulated 1000 datasets from the **SAME** state space model as following:
+
+\begin{align}
+Y_t &= T_t+S_t+I_t \quad & where \quad I_t\sim N(0,10)\\
+T_t &=T_{t-1}+\epsilon_t \quad &where \quad\epsilon_t\sim N(0,5) \\
+S_t &=-\sum_{j=1}^{11}S_{t-j}+\eta_t \quad &where \quad \eta_t\sim N(0,1)
+\end{align}
+
+**II.**  I used the following loss function(*the last term is different but also to control the derivative of trend series*) to build our prior distributions:
+
+$$Loss = \sum(Seasonal_{X-11}-Seasonal_{SSM})^2 + \sum(Trend_{X-11}-Trend_{SSM})^2 + [\sum D(Trend_{X-11})-\sum D(Trend_{SSM})]^2$$
+
+**III.**  The distribution of the *good* estimators of the other two variances is as following:(based on the 101:600 datasets)
+
+```{r, fig.height=3.5, echo=FALSE}
+rm(list = ls())
+load(file='C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/.RData')
+plot(density(idemat2[,1]), xlab='Irregular variance', main='Prior distribution of irregular variance estimators')
+plot(density(idemat2[,2]), xlab='Trend variance', main='Prior distribution of trend variance estimators')
+
+```
+
+**NOTE: **The reason we have a little bump at 20 in the first figure is that our *upper limit* of irregular variance in grid search is 20, in another word, some *good* estimators of irregualr variance could be greater than 20. Since the computation cost a lot of time, we will use this prior at first. It is not hard to fix it :)
+
+**IV.**  At the moment, I only used the first 100 datasets to test my method, and the MAPs' distribution are as following:
+
+```{r,fig.height=3.5, echo=FALSE}
+plot(density(postmat1[,1]), xlab='Irregular variance', main='Distribution of MAP estimators for irregular variance')
+plot(density(postmat1[,2]), xlab='Trend variance', main='Distribution of MAP estimators for trend variance')
+```
+
+**V.** The **MLEs** and the **ideal** estimators of these 100 datasets are distributed as following:
+
+```{r,fig.height=6, echo=FALSE}
+par(mfrow=c(2,2))
+plot(density(mlemat[c(1:100),1]), xlab='Irregular variance', main='MLEs for irregular variance')
+plot(density(mlemat[c(1:100),2]), xlab='Trend variance', main='MLEs for trend variance')
+
+plot(density(idemat[c(1:100),1]), xlab='Irregular variance', main='\'Good\' estimators for irregular variance')
+plot(density(idemat[c(1:100),2]), xlab='Trend variance', main='\'Good\' estimators for trend variance')
+
+par(mfrow=c(1,1))
+```
+
+**VI.** To compare these three models, I used two graphs here: 
+
+* the **density** distributions; 
+
+* their **scatterplots**.
+
+```{r,fig.height=3.5, echo=FALSE}
+
+plot(density(postmat1[,1]), ylim=c(0,0.3), xlim=c(0,50), main='', xlab='', col=4)
+par(new=TRUE)
+plot(density(mlemat[c(1:100),1]),ylim=c(0,0.3),  xlim=c(0,50), main='', xlab='', col=2)
+par(new=TRUE)
+plot(density(idemat[c(1:100),1]), ylim=c(0,0.3), xlim=c(0,50), xlab='Irregular variance', main='Comparison of different estimators for irregular variance')
+legend('topright', c('GOOD', 'MLE', 'MAP'), col=c(1,2,4), lty=1, lwd=1)
+
+
+plot(density(postmat1[,2]), ylim=c(0,0.6), xlim=c(0,25), main='', xlab='', col=4)
+par(new=TRUE)
+plot(density(mlemat[c(1:100),2]), ylim=c(0,0.6), xlim=c(0,25), main='', xlab='', col=2)
+par(new=TRUE)
+plot(density(idemat[c(1:100),2]), ylim=c(0,0.6), xlim=c(0,25), xlab='Trend variance', main='Comparison of different estimators for trend variance')
+legend('topright', c('GOOD', 'MLE', 'MAP'), col=c(1,2,4), lty=1, lwd=1)
+
+
+```
+
+The parallel coordinate scatterplots are: 
+
+\begin{figure}
+\centering
+\caption{Comparison of irregular variance estimators}
+\includegraphics[width=0.85\textwidth]{C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file3/plots/comparison of variance1.png}
+\caption{Comparison of trend variance estimators}
+\includegraphics[width=0.85\textwidth]{C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file3/plots/comparison of variance2.png}
+\end{figure}
+
+\newpage
+Overall, we can tell from the above two figures that our informative prior(bayes) **DOSE WORK** compared with MLE, since the **bayes** are closer to ideal values. 
+
+To **verify** the effect of our prior, I used the **uniform** distribution as another prior at the same time *as a contrast*.
+
+*Note: the uniform prior for irregular variance is defined on [0,20] and that of trend variance is [0,10]. So both uniform priors are also informative to some extent.*
+
+The results are as following:
+
+\begin{figure}
+\centering
+\caption{Comparison of irregular variance estimators(Uniform)}
+\includegraphics[width=0.85\textwidth]{C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file3/plots/comparison of variance1(naive).png}
+\end{figure}
+
+\newpage
+\begin{figure}
+\centering
+\caption{Comparison of trend variance estimators(Uniform)}
+\includegraphics[width=0.85\textwidth]{C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file3/plots/comparison of variance2(naive).png}
+\end{figure}
+
+
+We can see that the convergence under *uniform* prior is not very quick compared with the previous one.
+
+To have a better understand of the difference among *MLE, SSM_Bayes, SSM_Bayes(uniform)*, I define $$d = ||Var1_{ideal} - Var1_{model} ||_1 + || Var2_{ideal} - Var2_{model} ||_1$$
+that is $$d = |Var1_{ideal} -Var1_{model}| + | Var2_{ideal} - Var2_{model}| $$
+where $Var_{ideal}$ means the result from our loss function and $Var1, Var2$ stand for irregular variance and trend variance respectively. The following table gives the number of datasets satisfying the corresponding condition:(*Reminder: we have 100 datasets for testing in total*)
+
+\begin{table}[!h]
+\centering
+\caption{Comparison of estimate error among different methods}
+\begin{tabular}{|l|l|l|l|}
+\hline
+Method & $d \le 1$ & $d \le 2$ & $d \le 3$ \\ 
+\hline
+MLE & 2 & 9 & 17 \\
+Uniform Prior & 2 & 9 & 25 \\
+Our Prior & 5 & 21 &35 \\
+\hline
+\end{tabular}
+\end{table}
+
+
+# Improvements and Questions
+
+* In Kalman filter, the filtering process is fixed, but for smoothing process, whether there is any **better smoother**? 
+
+* As we can see in the following **TREND** figures, it seems that at each bump, our SSM will **underestimate** a little bit. If we can't figure our the smoother problem, we could add one more step to fix this difference after smoothing process. It is worthy to explore this potential step here.
+
+\begin{figure}
+\includegraphics{C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file2/plots/eg1}
+\includegraphics{C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file2/plots/eg2}
+\end{figure}
+
+* Although the results after considering the Bayesian analysis are better than MLEs **as a whole**, I still need to admit the effect is not very good, especially when we look at the **single** dataset, just like the figures above. I guess this problem would be solved if we figure out the seconal one.
+
+* Computing a *good* estimator of variance is time-consuming, and to build a strong informative prior we need to compute numerous datasets, so finding a better optimizaition method will **accelerate** our process a lot.(The difficulty here is that we do **NOT** have an *explicit* expression of loss function w.r.t variances. I skipped this before since it won't influence our final conclusions.)
+
+* Suppose we are happy with the results we obtained(that is we don't care about these *tiny* difference anymore), the next thing we could try is to check the forecasting result based on our model.(I haven't do this before, but it should be pretty quick I think.)
+
+* Finally, a very essential and important question is what if the results from *X-11* or *SEATS* are not correct/accurate?  

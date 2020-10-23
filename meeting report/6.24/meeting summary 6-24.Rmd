@@ -1,0 +1,20 @@
+---
+title: "meeting summary 6-24"
+author: "linyiguo"
+date: "2019.7.2"
+output: word_document
+---
+
+Well, it has been a long time after meeting with aaron last time. I am in Toronto now and sitting in the starbucks located inside pipi's company(155 Wellington Street, RBC). I hope to recall every details of last meeting... I heard she told me Ivy could graduate before next winter term, and one quater of Ivy's thesis is already done. I believe I need to hurry up. But I think it would be a little difficult for me to finish the whole project in this year. It seems Aaron never plan to let me finish and graduate before next year. Anyway, I need to do more research now and stop relying on aaron anymore! Just remember, **the whole research is your own bussiness and ur professor is just auxiliary.**
+
+### something to check 
+
+**1** the size of seasonal component $S_j \approx \frac{\sqrt{j}}{\sqrt{n}}$ 
+
+**2** change the seasonal component expression, instead of considering one loop, try former two/three cycles
+
+**3** increase the number of particles, 1000 is not too many
+
+**4** apply markov chain monte carlo steps(mcmc), specically Metropolis-Hastings Algorithm
+
+

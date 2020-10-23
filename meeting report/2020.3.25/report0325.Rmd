@@ -1,0 +1,254 @@
+---
+title: "Report0325"
+author: "Linyi Guo"
+date: "2020/3/25"
+output: pdf_document
+---
+Hi Professor,
+
+This report is mainly composed by the content I sent you last time with more figures and some hypothesis tests.
+
+
+```{r include=FALSE}
+rm(list = ls())
+setwd('C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file7')
+load('.RData')
+library(seasonal)
+library(KFAS)
+library(doParallel)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(forecast)
+library(extraDistr)
+library(lubridate)
+library(gridExtra)
+```
+
+# Part 1: Simulated data
+
+## Review 
+
+The simulated data we used in the following analysis contains 1000 datasets at length 180(15 years) simulated from the same state space model as following,
+
+\begin{align}
+Y_t &= T_t+S_t+I_t \quad & where \quad I_t\sim N(0,10)\\
+T_t &=T_{t-1}+\epsilon_t \quad &where \quad\epsilon_t\sim N(0,5) \\
+S_t &=-\sum_{j=1}^{11}S_{t-j}+\eta_t \quad &where \quad \eta_t\sim N(0,1)
+\end{align}
+
+Then I used the first 14 years to build various models and compare their **decompositions** and the last year is saved for **forecasting.**
+
+As a contrast, we shall still use *half-Cauchy*(with its own parameter equals to $\sqrt{10}$ and $\sqrt{5}$ separately) as another prior on standard error $\sigma_I$ and $\sigma_T$ instead of $\sigma^2$ this time.
+
+## Decomposition
+
+Based on the decomposition from X-11 plus we mainly care about the trend and seasonal components, the error we defined is $$Error = \sum (Trend_{X-11} - Trend_{Object})^2 + \sum (Seasonal_{X-11} - Seasonal_{Object})^2$$
+
+The table below is the `summary` result of three models' error(they are all SSMs with different parameter estimations)
+
+```{r echo=FALSE}
+error_decomp %>% select(c(1,4,6)) %>% summary
+```
+
+The standard deviation and standard error(which is the standard deviation adjusted by the group size 1000) are
+
+```{r echo=FALSE}
+standard_deviation <- apply(error_decomp[,c(1,4,6)], 2, sd)
+standard_deviation
+standard_error <- apply(error_decomp[,c(1,4,6)], 2, sd)/sqrt(1000)
+standard_error
+```
+
+These numbers above give us an intuition that the MAP/MAP_halfCauchy behaves better than MLE, and compared with the emperical prior, the half-cauchy seems to converge too much(cause the parameter I set up is *too small*), but for the mean error, emperical prior did a better job. 
+
+This is the boxplot of their differences:(*MAP1* is the estimator from our informative prior; *MAP2* is from half-Cauchy)
+
+```{r echo=FALSE}
+boxplot(error_decomp[,c(1,1,4)] - error_decomp[,c(4,6,6)], names =c('MLE - MAP1', 'MLE - MAP2', 'MAP1 - MAP2'))
+```
+
+And the distributions of their error and errors' difference:
+
+```{r echo=FALSE, fig.asp=1.5}
+par(mfrow=c(2,1))
+plot(density(error_decomp[,1]), col=2, ylim=c(0,0.005), xlim=c(0,1500), lwd=2, main='', xlab='')
+par(new=TRUE)
+plot(density(error_decomp[,4]), col=4, ylim=c(0,0.005), xlim=c(0,1500), lwd=2, main='', xlab='')
+par(new=TRUE)
+plot(density(error_decomp[,6]), col=5, ylim=c(0,0.005), xlim=c(0,1500), lwd=2, main='', xlab='')
+title(main='Decomposition error comparison(X11 is standard)')
+legend('topright', c('MLE', 'MAP', 'MAP_halfCauchy'), col=c(2,4,5), lty=1, lwd=2)
+
+
+plot(density(error_decomp[,1] - error_decomp[,4]), col=2, ylim=c(0,0.03), xlim=c(-400,500), lwd=2, main='', xlab='')
+par(new=TRUE)
+plot(density(error_decomp[,1] - error_decomp[,6]), col=3, ylim=c(0,0.03), xlim=c(-400,500), lwd=2, main='', xlab='')
+par(new=TRUE)
+plot(density(error_decomp[,4] - error_decomp[,6]), col=4, ylim=c(0,0.03), xlim=c(-400,500), lwd=2, main='', xlab='')
+abline(v=0, lwd=2)
+title(main='Distribution of differences among decomposition errors')
+legend('topright', c('MLE-MAP', 'MLE-MAP_halfCauchy', 'MAP-MAP_halfCauchy'), col=c(2,3,4), lty=1, lwd=2)
+
+par(mfrow=c(1,1))
+
+```
+
+I plotted the *normal qq plot* of their decomposition errors and it seems that they are not normally distributed, so after some explorations, I found the **Friedman test** and **Mann–Whitney U test** fit our problem well. And the results showed that the difference between each method is prominent. Therefore, we have reasons to believe these three methods did differ from each other in this part.
+
+```{r echo=FALSE}
+grid.arrange( ggplot(data = error_decomp, aes(sample=MLE)) + stat_qq() + stat_qq_line()+ggtitle('MLE'),
+ggplot(data = error_decomp, aes(sample=MAP)) + stat_qq() + stat_qq_line()+ggtitle('MAP'),
+ggplot(data = error_decomp, aes(sample=MAP_halfcauchy)) + stat_qq() + stat_qq_line()+ggtitle('MAP_halfCauchy'),nrow=1)
+```
+
+Results from Friedman test:(first one is to test three methods together, and the rest three are for every two of them)
+
+```{r echo=FALSE}
+error_decomp_tidy <- as.data.frame(rbind(cbind(1:1000, 'MLE', error_decomp$MLE),
+                           cbind(1:1000, 'MAP', error_decomp$MAP),
+                           cbind(1:1000, 'MAP2', error_decomp$MAP_halfcauchy)))
+
+colnames(error_decomp_tidy) <- c('No', 'Method', 'Error')
+
+friedman.test(data=error_decomp_tidy, Error ~ Method | No)
+# which is equal to 
+# friedman.test(as.matrix(error_decomp[,c(1,4,6)]))
+
+friedman.test(as.matrix(error_decomp[,c(1,4)]))
+friedman.test(as.matrix(error_decomp[,c(1,6)]))
+friedman.test(as.matrix(error_decomp[,c(4,6)]))
+
+```
+
+Results from Mann–Whitney U test:(for each two of them)
+
+```{r echo=FALSE}
+wilcox.test(x=error_decomp$MLE, y=error_decomp$MAP)
+wilcox.test(x=error_decomp$MLE, y=error_decomp$MAP_halfcauchy)
+wilcox.test(x=error_decomp$MAP, y=error_decomp$MAP_halfcauchy)
+```
+
+# Prediction
+
+With the models obtained before, we could predict each series for the next year and then we compared our prediction with the true values.
+
+Similar to the previous section, we shall have the following results:
+
+**MEAN**
+
+```{r echo=FALSE}
+apply(error_pre[,c(1,2,3,7)], 2, mean)
+```
+
+**Standard deviation and standard error**
+
+```{r echo=FALSE}
+apply(error_pre[,c(1,2,3,7)], 2, sd)
+apply(error_pre[,c(1,2,3,7)], 2, sd)/sqrt(1000)
+```
+
+
+As we see, differences here among SSMs are not obvious, but the behaviour of X11 is poor.
+
+And when I applied the testing methods, *Friedman test* supported our argument above, which is the prediction error from x-11 is different from those from SSMs but SSMs have a similar prediction error distribution compared with each other. However, *Mann–Whitney U test* showed that all prediction errors' difference of these methods are not prominent, although the p-values of tests between x11 and other SSMs are not very high(0.13-0.16).
+
+**Friedman test**
+
+*1,2,3,7 stand for x11, MLE, MAP, MAP_halfCauchy separately.*
+
+```{r echo=FALSE}
+friedman.test(as.matrix(error_pre[,c(1,2,3,7)]))
+friedman.test(as.matrix(error_pre[,c(1,2)]))
+friedman.test(as.matrix(error_pre[,c(1,3)]))
+friedman.test(as.matrix(error_pre[,c(1,7)]))
+friedman.test(as.matrix(error_pre[,c(2,3,7)]))
+```
+
+**Mann–Whitney U test**
+
+```{r echo=FALSE}
+wilcox.test(x=error_pre$x11, y=error_pre$MLE)
+wilcox.test(x=error_pre$x11, y=error_pre$MAP)
+wilcox.test(x=error_pre$x11, y=error_pre$map2)
+wilcox.test(x=error_pre$MLE, y=error_pre$MAP)
+wilcox.test(x=error_pre$MLE, y=error_pre$map2)
+wilcox.test(x=error_pre$MAP, y=error_pre$map2)
+
+```
+
+# Real data
+
+Here I extracted 27 datasets from Statcan for our analysis. For each dataset, we left the last year for prediction and used the previous to build models and do decompositions. But I haven't applied any emperical prior here, the only prior distribution is the half-Cauchy defined above with the same parameter values. 
+
+*Note*: We removed the outliers and calendar effects at first. And X-11 showed that the relations among components for these data are all multiplicative so to use SSM I had to take log in all models, which would makes these errors very tiny.
+
+## Decomposition 
+
+**MEAN**
+
+```{r echo=FALSE}
+apply(realerror_decomp, 2, mean)
+```
+
+**Standard deviation and standard error**
+
+```{r echo=FALSE}
+apply(realerror_decomp, 2, sd)
+apply(realerror_decomp, 2, sd)/sqrt(27)
+```
+
+**Boxplot**
+
+```{r echo=FALSE}
+boxplot(realerror_decomp)
+```
+
+**Test**
+
+Friedman test showed the difference of their decomposition error is significant but Mann–Whitney U test did not.
+
+```{r echo=FALSE}
+friedman.test(as.matrix(realerror_decomp))
+
+wilcox.test(x=realerror_decomp$MLE, y=realerror_decomp$MAP_hc)
+
+```
+
+## Prediction
+
+**MEAN**
+
+```{r echo=FALSE}
+apply(realerror_pre, 2, mean)
+```
+
+**Standard deviation and standard error**
+
+```{r echo=FALSE}
+apply(realerror_pre, 2, sd)
+apply(realerror_pre, 2, sd)/sqrt(27)
+```
+
+**Boxplot**
+
+```{r echo=FALSE}
+boxplot(realerror_pre)
+```
+
+**Test**
+
+*1,2,3 stand for X11, MLE and MAP_halfCauchy.*
+
+```{r echo=FALSE}
+friedman.test(as.matrix(realerror_pre))
+friedman.test(as.matrix(realerror_pre[,c(1,3)]))
+friedman.test(as.matrix(realerror_pre[,c(1,2)]))
+friedman.test(as.matrix(realerror_pre[,c(2,3)]))
+
+wilcox.test(x=realerror_pre$X11, y=realerror_pre$MLE)
+wilcox.test(x=realerror_pre$X11, y=realerror_pre$MAP_hc)
+wilcox.test(x=realerror_pre$MLE, y=realerror_pre$MAP_hc)
+```
+
+**Summary:** although we didn't apply emperical prior, the weakly-informative prior(maybe not very weak) also did a better job compared with MLE. The interesting thing is compared with the prediction of simulated data, X-11 had a better performance in these real data. In conclusion, the result after considering prior information is better/equivalent to those from X-11 or MLEs. 

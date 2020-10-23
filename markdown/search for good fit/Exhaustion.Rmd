@@ -1,0 +1,187 @@
+---
+title: "Exhaustion"
+author: "LinyiGuo"
+date: "2019/10/14"
+output: 
+  html_document:
+    toc: true
+  pdf_document:
+    toc: true
+---
+
+**Preface**
+
+&emsp;&emsp;This file is to determine the expected value of parameters. We are going to compare the results from *TRAMO-SEATS/X11* with those from *SSM* under different parameters. As for how to choose the parameters, we use exhaustion method here.
+
+
+```{r}
+rm(list=ls())
+set.seed(9483)
+```
+```{r}
+library(KFAS)
+library(seasonal)
+library(ggplot2)
+```
+
+
+```{r}
+# note: data include the result after seasonal adjustment
+total <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\total.csv')
+automobile <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\automobile.csv')
+```
+
+```{r}
+total <- ts(total$unadjusted, start = c(2004,01), frequency = 12)
+automobile <- ts(automobile$unadjusted, start = c(2004,01), frequency = 12)
+```
+
+```{r}
+total_x11 <- seas(total, x11='')
+automobile_x11 <- seas(automobile, x11='')
+
+summary(total_x11)
+summary(automobile_x11)
+```
+
+```{r}
+total_x11_seasadj <- series(total_x11, 'd11')
+total_x11_trend <- series(total_x11, 'd12')
+total_x11_seasonal <- series(total_x11, 'd10')
+automobile_x11_seasadj <- series(automobile_x11,'d11')
+automobile_x11_trend <- series(automobile_x11, 'd12')
+automobile_x11_seasonal <- series(automobile_x11, 'd10')
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(total)
+plot(total_x11_seasadj)
+plot(total_x11_trend)
+plot(total_x11_seasonal)
+
+plot(automobile)
+plot(automobile_x11_seasadj)
+plot(automobile_x11_trend)
+plot(automobile_x11_seasonal)
+par(mfrow=c(1,1))
+```
+
+
+```{r ssm}
+total_ssmm <- SSModel(log(total) ~ SSMtrend(1, Q=list(1)) + 
+                       SSMseasonal(12, sea.type = 'dummy', Q=1), 
+                     H=1)
+
+total_ssm <- KFS(total_ssmm)
+```
+
+```{r}
+total_ssm_trend <- coef(total_ssm, states = 'trend')
+total_ssm_seasonal <- ts(-rowSums(coef(total_ssm, states = 'seasonal')),
+                       start = c(2004,1), frequency = 12)
+```
+
+```{r season}
+plot(exp(total_ssm_seasonal)[-length(total)], ylab='',ylim=c(0.8,1.15), type='l')
+par(new=TRUE)
+plot(total_x11_seasonal[-1], ylab='', ylim=c(0.8,1.15), col=2, type='l')
+
+```
+```{r trend}
+plot(exp(total_ssm_trend), ylab='', ylim=c(2.5*10^7, 5.5*10^7))
+par(new=TRUE)
+plot(total_x11_trend, ylab='', ylim=c(2.5*10^7, 5.5*10^7), col=2)
+```
+
+```{r Seasadj}
+plot(total[-1]/exp(total_ssm_seasonal)[-length(total)], type = 'l',
+     ylim=c(2.5*10^7,5.5*10^7), ylab='')
+par(new=TRUE)
+plot(total_x11_seasadj[-1], col=2, type='l',
+     ylim=c(2.5*10^7,5.5*10^7), ylab='')
+```
+
+what if I use 'total' after prepocessing in ssm? 
+
+```{r}
+total1 <- series(total_x11, 'b1')
+total1_ssmm <- SSModel(log(total1) ~ SSMtrend(1, Q=list(1)) + 
+                       SSMseasonal(12, sea.type = 'dummy', Q=1), 
+                     H=1)
+
+total1_ssm <- KFS(total1_ssmm)
+```
+```{r}
+total1_ssm_trend <- coef(total_ssm, states = 'trend')
+total1_ssm_seasonal <- ts(-rowSums(coef(total1_ssm, states = 'seasonal')),
+                       start = c(2004,1), frequency = 12)
+
+
+plot(exp(total1_ssm_trend), ylab='', ylim=c(2.5*10^7, 5.5*10^7))
+par(new=TRUE)
+plot(total_x11_trend, ylab='', ylim=c(2.5*10^7, 5.5*10^7), col=2)
+
+plot(total1[-1]/exp(total1_ssm_seasonal)[-length(total)], type = 'l',
+     ylim=c(2.5*10^7,5.5*10^7), ylab='')
+par(new=TRUE)
+plot(total_x11_seasadj[-1], col=2, type='l',
+     ylim=c(2.5*10^7,5.5*10^7), ylab='')
+```
+
+
+**Comment: ** I picked these variances randomly, but the results are not ideal. I'm going to use exhaustion to choose a set of variances according to the difference of seasonal adjusted series.
+
+```{r}
+# suppose our model is multiplicative
+exhaustion_product <- function(data){
+  Dif <- c()
+  index <- c()
+  x11 <- seas(data, x11='')
+  Seasadj_x11 <- series(x11, 'd11')
+  for (i in 1:6) {
+    for (j in 1:6) {
+      for (k in 1:6) {
+        ssm <- SSModel(log(data) ~ SSMtrend(1, Q=list(10^(-4+j))) + 
+                  SSMseasonal(12, sea.type = 'dummy', Q = 10^(-4+k)),
+                H = 10^(-4+i))
+        mod <- KFS(ssm)
+        
+        Season_ssm <- -rowSums(coef(mod, states = 'seasonal'))
+        Seasadj_ssm_log <- log(data) - Season_ssm
+        Seasadj_ssm <- exp(Seasadj_ssm_log)
+        
+        dif <- sum((Seasadj_ssm - Seasadj_x11)^2)
+        Dif <- c(Dif, dif)
+        index <- rbind(index, c(10^(-4+i),10^(-4+j),10^(-4+k)))
+      }
+      
+    }
+    
+  }
+  fit <- index[which.min(Dif),]
+  return(fit)
+}
+```
+
+```{r}
+exhaustion_product(total)
+```
+
+```{r}
+ssm_total <- SSModel(log(total) ~ SSMtrend(1, Q=list(100)) + 
+                       SSMseasonal(12, sea.type = 'dummy', Q=1), 
+                     H=0.001)
+
+mod_total_ssm <- KFS(ssm_total)
+
+plot(exp(-rowSums(coef(mod_total_ssm, states='seasonal'))), type='l')
+
+plot(exp(coef(mod_total_ssm, states = 'trend')))
+
+plot(total/exp(-rowSums(coef(mod_total_ssm, states='seasonal'))), type='l')
+
+```
+
+# See Exhaustion2
+

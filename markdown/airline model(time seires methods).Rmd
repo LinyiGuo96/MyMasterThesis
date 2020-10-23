@@ -1,0 +1,120 @@
+---
+title: "airline model"
+author: "linyiguo"
+date: "2019/7/25"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+## Data Exploratory
+```{r}
+library(forecast)
+library(tseries)
+library(ggfortify)
+data("AirPassengers")
+data_ap <- AirPassengers
+
+data_ap
+sum(is.na(data_ap))
+frequency(data_ap)
+cycle(data_ap)
+summary(data_ap)
+plot(data_ap, xlab="Date", ylab="Passenger numbers(1000's)", 
+     main = "Air passenger numbers from 1949 to 1961")
+autoplot(data_ap)+labs(x="Date", y="Passenger numbers(1000's)", 
+                       title = "Air passengers from 1949 to 1961")
+boxplot(data_ap~cycle(data_ap), xlab="Date", ylab="Passenger numbers(1000's)",
+        main="Monthly Air Passengers from 1949 to 1961")
+
+autoplot(log(data_ap))+labs(x="Date", y="Passenger numbers(1000's)", 
+                       title = "Air passengers from 1949 to 1961")
+```
+
+**Note** The amplitude of the original data is becoming larger as time goes, so we need to take `log` if want to use `additive` in decomposation.
+
+
+## Time Series Decomposition
+```{r}
+decompose_ap <- decompose(data_ap, "multiplicative") 
+#decompose_ap'class is decompose.ts
+autoplot(decompose_ap)
+decompose_ap1 <- decompose(log(data_ap), "additive")
+autoplot(decompose_ap1)
+```
+
+## Test Stationarity of The Time Series
+
+**1. ADF(Augmented Dickey-Fuller) Test**
+
+```{r}
+adf.test(data_ap)
+```
+
+**2. ACF(Autocorrelation) Test**
+
+```{r}
+autoplot(acf(data_ap, plot=F))+labs(title="Correlogram of Air Passengers from 1949 to 1961")
+```
+
+ If the autocorrelation crosses the dashed blue line, it means that specific lag is significantly correlated with current series.
+ 
+```{r}
+decompose_ap$random # the first and last 6 residuals are missing
+autoplot(acf(decompose_ap$random[7:138],plot=FALSE))+ labs(title="Correlogram of Air Passengers Random Component from 1949 to 1961") 
+```
+
+
+## Fit a Time Series Model
+
+**1. Linear Model**
+
+```{r}
+data_ap_dm <- cbind(as.numeric(time(data_ap)),as.numeric(data_ap))
+colnames(data_ap_dm) <- c('t','passengers')
+ggplot(data_ap_dm, aes(x=t,y=passengers)) + geom_line() + geom_smooth(method = "lm") + labs(x ="Date", y = "Passenger numbers (1000's)", title="Air Passengers from 1949 to 1961") 
+```
+
+**2. Arima Model**
+
+`ggtsdiag` is from package `ggfortify` and used to perform diagnostics of residuals.
+
+```{r}
+arima_ap <- auto.arima(data_ap)
+arima_ap
+arima_ap1 <- auto.arima(log(data_ap))
+arima_ap1
+ggtsdiag(arima_ap)
+ggtsdiag(arima_ap1)
+```
+
+## Calculate Forecast
+
+```{r}
+forecast_ap <- forecast(arima_ap, level=c(95), h=36)
+autoplot(forecast_ap)
+forecast_ap1 <- forecast(arima_ap1, level=c(95), h=36)
+autoplot(forecast_ap1)
+as.numeric(forecast_ap1$x)
+exp(as.numeric(forecast_ap1$x)) # x is original series
+exp(as.numeric(forecast_ap1$mean)) # mean/lower/upper is the predicted series
+```
+
+
+## seasonal adjustment
+
+```{r}
+summary(decompose_ap)
+autoplot(data_ap/decompose_ap$seasonal)+labs(x="date", y="deseasoned series", title = "original series after deseasoning") 
+```
+
+since we choose `multiplicative` in `decompose`, here we need devide by seasonal.
+
+But for logarithm of data, we can use `-`.
+```{r}
+summary(decompose_ap1)
+autoplot(log(data_ap)-decompose_ap1$seasonal)+labs(x="date", y="log of deseasoned series", title = "log of original series after deseasoning") 
+```
+ 
+## 
+

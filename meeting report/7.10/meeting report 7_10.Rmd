@@ -1,0 +1,12 @@
+---
+title: "meeting report 7-10"
+author: "linyiguo"
+date: "2019.7.10"
+output: word_document
+---
+
+Well, I am at a workshop now but it seems a little boring... I plan to finish this report this afternoon before meeing aaron.
+
+I spend some time clearing up my research to give a report to Prof.Wang, and I do find one problem...
+
+**Note: **

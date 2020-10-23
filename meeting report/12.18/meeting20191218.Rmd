@@ -1,0 +1,39 @@
+---
+title: "Meeting20191218"
+author: "Linyi Guo"
+date: "2019/12/18"
+output: html_document
+---
+
+In the past, we define our model is:
+$$Y_t=T_t+S_t+I_t \qquad I_t\sim N(0,\sigma_I^2) $$
+$$T_t=T_{t-1}+\epsilon_t \qquad \epsilon_t\sim N(0,\sigma_T^2) $$
+$$S_t=-\sum_{j=1}^{11}S_{t-j}+\eta_t \qquad \eta_t\sim N(0,\sigma_S^2) $$
+
+</br>
+Because we mainly care about seasonally adjusted series, based on this point, we can put `trend` and `irregular` together denoted as `N`, then our model will become:
+$$Y_t=N_t+S_t$$
+$$N_t=N_{t-1}+\epsilon_t \qquad \epsilon_t\sim N(0,\sigma_N^2) $$
+$$S_t=-\sum_{j=1}^{11}S_{t-j}+\eta_t \qquad \eta_t\sim N(0,\sigma_S^2)$$
+
+
+We already know in Kalman filter, as long as the ratio is the same the decomposition will be the same.(*Need to figure out the reason!*)
+</br>
+Now, let's define 
+$$\lambda = \frac{\sigma_N^2}{\sigma_S^2}$$
+then our problem will be a **univariate** problem.
+
+</br>
+
+In our former model, given datasets, we fixed $\sigma_S^2=1$ and did grid search of another two variances to find the *best* values, and our goal was to come up with a bivariate prior whose corresponding MAP estimator is close enough to both *best* values.
+
+</br>
+
+Now, we could repeat the similar thing we have done before: given datasets we can use grid search to find the best $\lambda$, denoted as $\lambda^*$. And our goal is to build a univariate prior which could pull $\lambda_{MLE}$ towards $\lambda^*$.
+
+
+<center>____________________________________TO BE CONTINUE____________________________________</center>
+
+
+
+

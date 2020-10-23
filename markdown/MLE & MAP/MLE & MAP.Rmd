@@ -1,0 +1,198 @@
+---
+title: "MLE & MAP"
+author: "LinyiGuo"
+date: "2019/9/22"
+output: 
+  
+  html_document: default
+  pdf_document: default
+---
+
+**Considering the parameters from Bayesian standpoint**
+
+I am still not very clear about my goal until now, which is pretty bad. Sometimes, I think 'Oh here it is! This is what I want!' but after a few days(actually, often after meeting with Aaron or someone else), I realize 'What? This is what I want? What's the meaning of it?' I feel my goal of research is always changed although they are all related to seasonal adjustment. I just do not know what they want actually. 
+
+At first, I thought they just want to smooth the curve of series after seasonal adjustment, when I got there, they told me something else. 
+
+Now, appatently I can achieve any kind of smoothness of any kind of curve, but I achieved these by forcing parameters manually. In **frequentist**, we prefer to let the data to 'speak', which would be more convictive. From this point of view, it seems to be meaningless to have different smoothness curves, although the truth may be not one and only. Also, from **Bayesian**, we hope our data help us to adjust our prior and 'speak' as well.
+
+From the results in frequentist and Bayesian, we could have a MLE or MAP value of parameters, and with the help of Kalman filter, we could plot the corresponding curves. In frequentist, the process can be achieved only once, but in Bayesian, we can apply the same procedure in different prior families and choose one better prior in one family. 
+
+Having saied so much, we need to show something real.
+
+For the expression in SSM, 
+
+* $y_t = \mu_t+\gamma_t + \epsilon_t$ , where $\epsilon_t \sim N(0,\sigma_y^2)$
+
+* $\mu_{t+1} = \mu_t + \phi_t$  , where $\phi_t \sim N(0,\sigma_\mu^2)$
+
+* $\gamma_t= \sum_{j=1}^{s/2} \gamma_{jt}$
+
+* $\gamma_{j,t+1} = \gamma_{jt} cos\lambda_j + \gamma_{jt}^* sin\lambda_j + \omega_{jt}$
+
+* $\gamma_{j,t+1}^* = - \gamma_{jt} sin\lambda_j + \gamma_{jt}^* sin\lambda_j + \omega_{jt}^*$   , where $\omega_{jt},\omega_{jt}^* \sim N(0,\sigma_\gamma^2)$
+
+**NOTE** We may use the 'dummy' expression of the seasonal component later.
+
+```{r echo=FALSE}
+rm(list=ls())
+set.seed(9483)
+options(digits = 4)
+```
+```{r}
+library(seasonal)
+library(forecast)
+library(KFAS)
+library(tseries)
+```
+
+```{r}
+data("AirPassengers")
+data_em <- unemp
+mod_em_seats <- seas(data_em)
+summary(mod_em_seats) # no outliers
+data_em_pre <- series(mod_em_seats, 'b1') # preprocess but useless in this case
+
+```
+
+In **KFAS**, *fitSSM* is used to compute the mle of parameters, given some user-defined function. (**NOT TRIED**)
+
+```{r}
+em_ssm <- SSModel(data_em ~ SSMtrend(1, Q = list(1)) + 
+                        SSMseasonal(12,Q=1, sea.type = "dummy"), H=1)
+mod_em_ssm <- KFS(em_ssm)
+
+```
+
+
+
+I am going to apply the following algorithm to calculate the **MLE** of variances in our model.
+
+* **Step 1** Suppose $\theta = (\sigma_y^2, \sigma_T^2, \sigma_S^2) = (1,1,1)$ as $\theta^{(0)}$ and use kalman filter to compute $\{T_t\}$ $\{S_t\}$ 
+
+* **Step 2** Use above series $\{T_t\}$ $\{S_t\}$ to compute the **MLE** of $\theta$ as $\theta^{(1)}$
+
+* **Step 3** Repeat above two steps until **convergence**
+
+In our case, I define the convergence is : 
+$$Var(seasadj_{seats} - seasadj_{ssm}) \le 1$$
+
+*Comment from Aaron:* 'I think that the typical "stop" condition is when your estimates have stopped changing much from one round of the algorithm to the next.'
+
+So, maybe I can exchange the convergence into something like:
+$$\Arrowvert \theta_t - \theta_{t-1} \Arrowvert_{l_2} \le 0.01 $$
+
+```{r}
+# define the expression of MLE
+var_y_hat <- function(Trend, Season, Obs){
+  sum((Obs-Trend-Season)^2)/length(Obs)
+}
+
+var_T_hat <- function(Trend){
+  sum((Trend[2:length(Trend)]-Trend[1:(length(Trend)-1)])^2)/(length(Trend)-1)
+}
+
+var_S_hat <- function(Season) {
+  a = 0 
+  for(t in 12:length(Season)){
+    a = a + sum(Season[(t-11):t])^2
+  }
+  return(a/(length(Season)-11))
+}
+
+var_seasadj <- function(seats,ssm){
+  seasadj_ssm <- data_em - rowSums(coef(ssm, states = "seasonal"))
+  data <- series(seats, "s11") - seasadj_ssm
+  return(var(data))
+}
+```
+```{r}
+# apply the algorithm
+Dif <-c()
+theta <- c(0.1,0.1,0.1)
+Theta <- theta
+for (i in 1:20){ # I define the iterations at first instead of using convergence as a stop condition
+
+  mod <- SSModel(data_em ~ SSMtrend(1, Q=list(theta[1]))+
+                   SSMseasonal(12,sea.type="dummy", Q=theta[2]), H=theta[3])
+  ssm <- KFS(mod)
+  Trend <- coef(ssm, states="trend")
+  Season <- rowSums(coef(ssm, states="seasonal"))
+  
+  theta[1] <- var_y_hat(Trend, Season, Obs=data_em)
+  theta[2] <- var_T_hat(Trend)
+  theta[3] <- var_S_hat(Season)
+  Theta <- rbind(Theta, theta)
+  
+  dif <- var_seasadj(mod_em_seats, ssm)
+  Dif <- c(Dif, dif)
+
+}
+Dif
+Theta
+```
+```{r}
+head(coef(mod_em_ssm))
+
+sum((data_em - rowSums(series(mod_em_seats,c('s10','s12'))))^2)/length(data_em) # mle of sigma_y^2 is 5843
+
+sum((series(mod_em_seats,'s12')[2:length(series(mod_em_seats,'s12'))] - 
+       series(mod_em_seats,'s12')[1:(length(series(mod_em_seats,'s12'))-1)])^2)/(length(series(mod_em_seats,'s12'))-1) # mle of sigma_T^2 is 26898.92
+
+L <- length(series(mod_em_seats, 's10'))
+a = 0
+for(t in 12:L){
+    a = a + sum(series(mod_em_seats,'s10')[(t-11):t])^2
+  }
+  return(a/(length(Season)-11))
+
+
+sum((data_em - rowSums(coef(mod_em_ssm)))^2)/length(data_em) #591234
+```
+
+The 
+
+```{r}
+plot(Trend)
+plot(Season, type = 'l')
+series(mod_em_seats,'s10')
+for (i in 1:27) {
+  plot(series(mod_em_seats,'s10')[(1+(i-1)*12): (12*i)], type = 'l',
+       ylim=c(-800,800), ylab='')
+  par(new=TRUE)
+  plot(Season[(1+(i-1)*12): (12*i)], type='l', ylim = c(-800,800), ylab='', col=2)
+  par(new=TRUE)
+  plot(rowSums(coef(mod_em_ssm,states = 'seasonal'))[(1+(i-1)*12): (12*i)],
+       type='l', col=3, ylim=c(-800,800),ylab='')
+  par(new=TRUE)
+}
+for( i in 1:17){
+  plot(Season[(1+(i-1)*12): (12*i)], type='l', ylim = c(-800,800), ylab='')
+  par(new=TRUE)
+}
+```
+
+
+
+---------------------------- UPDATE -------------------------------------
+
+
+The algorithm above should be wrong, since the final seasonal component after iterations is totally different from that from TRAMO-SEATS. I will try it again.
+
+```{r echo=FALSE}
+# this chunk is to test whether the 'b1' in 'series' is to pre-adjust data
+data("AirPassengers")
+data_ap <- AirPassengers
+mod_ap_seats <- seas(data_ap)
+
+data_ap_pre1 <- series(mod_ap_seats, 'b1')
+
+data_ap_pre2 <- rowSums(series(mod_ap_seats, c('s10','s12','s13')))
+
+plot(data_ap_pre1)
+
+plot(data_ap_pre1 - data_ap_pre2)
+
+```
+
+

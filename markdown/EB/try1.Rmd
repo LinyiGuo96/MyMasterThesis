@@ -1,0 +1,321 @@
+---
+title: "try1"
+author: "Linyi Guo"
+date: "2019/12/10"
+output: 
+  html_document:  
+    toc: true
+---
+
+```{r include=FALSE}
+rm(list=ls())
+set.seed(9483)
+```
+
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+library(ggplot2)
+library(plotly)
+```
+
+```{r include=FALSE}
+Data1 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data1.csv')
+Data2 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data2.csv')
+Data3 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data3.csv')
+Data4 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data4.csv')
+Data5 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data5.csv')
+Data6 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data6.csv')
+Data7 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data7.csv')
+Data8 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data8.csv')
+Data9 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data9.csv')
+Data0 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data0.csv')
+```
+```{r include=FALSE}
+data1 <- ts(Data1[,2], start=c(2000,01), frequency=12)
+data2 <- ts(Data2[,2], start=c(2000,01), frequency=12)
+data3 <- ts(Data3[,2], start=c(2000,01), frequency=12)
+data4 <- ts(Data4[,2], start=c(2000,01), frequency=12)
+data5 <- ts(Data5[,2], start=c(2000,01), frequency=12)
+data6 <- ts(Data6[,2], start=c(2000,01), frequency=12)
+data7 <- ts(Data7[,2], start=c(2000,01), frequency=12)
+data8 <- ts(Data8[,2], start=c(2000,01), frequency=12)
+data9 <- ts(Data9[,2], start=c(2000,01), frequency=12)
+data0 <- ts(Data0[,2], start=c(2000,01), frequency=12)
+
+
+
+data1_x11 <- seas(data1, x11='')
+data2_x11 <- seas(data2, x11='')
+data3_x11 <- seas(data3, x11='')
+data4_x11 <- seas(data4, x11='')
+data5_x11 <- seas(data5, x11='')
+data6_x11 <- seas(data6, x11='')
+data7_x11 <- seas(data7, x11='')
+data8_x11 <- seas(data8, x11='')
+data9_x11 <- seas(data9, x11='')
+data0_x11 <- seas(data0, x11='')
+```
+
+```{r include=FALSE}
+Datalist <- list(data1=data1, data2=data2, data3=data3, data4=data4, data5=data5, 
+                 data6=data6, data7=data7, data8=data8, data9=data9, data0=data0)
+```
+
+
+```{r}
+
+# loss
+Dif1 <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_irregular <- data[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+ 
+  D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+    sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+
+
+
+# exhaustion
+
+exhaustion1 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+  
+   for (i in 1:15) {
+     for (j in 1:15) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i, j, 1)
+           
+           dif <- Dif1(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+
+# loglikelihood
+
+loglikelihood <- function(data, trend, season, sigma){
+  
+  n <- length(data)
+  
+  a <- 0
+  
+  for (i in 12:n)  a <- a + (sum(season[(i-11):i]))^2
+  
+  l <- -(n-11)/2 * log(sigma[1]) - 
+    (n-11)/2 * log(sigma[2]) - (n-11)/2 * log(sigma[3]) -
+    sum((data[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/(2*sigma[1]) - 
+    sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/(2*sigma[2]) - 
+    a / (2*sigma[3])
+  
+  return(l)
+  
+}
+```
+
+
+```{r}
+
+# define the log likelihood matrix
+
+loglikelihood_matrix <- function(data){
+  LL <- c()
+  index <- c()
+   for (i in 1:25) {
+     for (j in 1:25) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i, j, 1)
+         
+         ll <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma)
+         LL <- c(LL, ll)
+         index <- rbind(index, sigma)
+      }
+   }
+  df <- data.frame(variance=index, loglikelihood=LL)
+  return(df)
+}
+```
+
+
+```{r}
+# function to compute proportion
+c1 <- function(data){
+  c1matrix <- c()
+  n <- length(data)
+  for (i in 1:20){
+    for (j in 1:20){
+      ssmm <- SSModel(data ~ SSMtrend(1,Q=list(j)) + 
+                        SSMseasonal(12,sea.type = 'dummy',Q=1), H=i)
+      ssm <- KFS(ssmm)
+      
+      trend <- coef(ssm, states='trend')
+      season <- -rowSums(coef(ssm, states='seasonal'))
+
+      c1y <- sum((data[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/2
+      c1T <- sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/2
+      
+      c1matrix <- rbind(c1matrix, c(c1y,c1T))
+    }
+  }
+  c1 <- colMeans(c1matrix)
+  return(c1)
+}
+```
+
+```{r}
+logprior <- function(c1,ky,kt,sigma){
+  return(-(0.01*c1[1]+2*ky*c1[1]/75)*sigma[1]-(0.01*c1[2]+2*kt*c1[2]/75)*sigma[2])
+}
+```
+
+```{r}
+logposterior_matrix <- function(data, ky, kt,c1){
+  
+  LP <- c()
+  index <- c()
+  
+
+  for (i in 1:15){
+    for(j in 1:15){
+      
+      sigma <- c(i, j, 1)
+      
+      ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i)
+      ssm <- KFS(ssmm)
+         
+      ssm_trend <- coef(ssm, states = 'trend')
+      ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+
+      lp <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma) + 
+        logprior(c1,ky,kt,sigma)
+         
+      LP <- c(LP, lp)
+      index <- rbind(index, sigma)
+    }
+  }
+  df <- data.frame(variance=index, logposterior=LP)
+  return(df)
+}
+```
+
+```{r}
+
+error <- function(data,ky,kt,c1) {
+  
+  x11 <- seas(data, x11='')
+
+  data_postmatrix <- logposterior_matrix(data,ky,kt,c1)
+  
+  map <- as.numeric(data_postmatrix[which.max(data_postmatrix$logposterior),][-4])
+                                 
+      
+  ssmm <- SSModel(data ~ SSMtrend(1, Q=list(map[2])) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1), H = map[1])
+  
+  ssm <- KFS(ssmm)
+  
+  error <- Dif1(x11,ssm,data,map)
+    
+  return(error) 
+}
+
+
+
+k_search <- function(datalist){
+  
+  Error <- c()
+  index <- c()
+  lengthratio <- sapply(datalist, length)/sum(sapply(datalist, length))
+  scaleratio <- sapply(datalist, function(x) (max(x)-min(x))^2) / 
+    sum(sapply(datalist, function(x) (max(x)-min(x))^2))
+  c1list <- sapply(datalist, c1)
+
+  
+  for (ky in 0:9){
+    for (kt in 0:9){
+      
+      error <- c()
+      
+      for (k in 1:10) {
+        
+        error <- c(error, error(datalist[[k]],ky, kt,c1list[,k]))
+        
+      }
+      
+      error <- error * lengthratio * scaleratio
+
+      index <- rbind(index, c(ky,kt))
+      Error <- c(Error, sum(error))
+    }
+  }
+  
+  
+  df <- data.frame(ky=index[,1], kt=index[,2], error=Error)
+  return(df)
+}
+```
+
+```{r}
+k_search_matrix <- k_search(Datalist)
+
+```
+  
+```
+write.csv(k_search_matrix, 'C:\\Users\\GuoLY\\Desktop\\markdown\\MLE & MAP\\k_search.csv')
+```
+
+
+```{r}
+
+k_search_matrix[which.min(k_search_matrix$error),]
+```
+
+
+
+```{r}
+c1list <- sapply(Datalist, c1)
+
+Map <- c()
+for (i in 1:10){
+  logpostmatrix <- logposterior_matrix(Datalist[[i]], 2,7, c1list[,i])
+  map <- logpostmatrix[which.max(logpostmatrix$logposterior),c(1,2,3)]
+  Map <- rbind(Map,map)
+}
+
+Map
+```
+

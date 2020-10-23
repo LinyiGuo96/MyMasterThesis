@@ -1,0 +1,55 @@
+---
+title: "Report10.30"
+author: "Linyi Guo"
+date: "2019/10/29"
+output: 
+   html_document:
+     toc: true
+---
+
+```{r include=FALSE}
+rm(list=ls())
+set.seed(9483)
+```
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+```
+
+# Exhaustion 
+
+## Review 
+
+At our last meeting, I use the error defined below to find the 'best' estimate:
+$$(\sum(X11_{trend}-SSM_{trend})^2) * (\sum(X11_{seasonal}-SSM_{seasonal})^2) * (\sum(X11_{seasadj}-SSM_{seasadj})^2)$$
+
+And the setting of variance is $(0.001,0.01,0.1,1,10,100)$.
+
+But after some **exploration**, I found one point I didn't find before:
+
+* As long as the ratio among variances keep same, the result from Kalman filter is same.
+
+
+**Exploration** means: I tried two error measurements we mentioned last time, which are
+
+1. ${\sum(X11_{trend}-SSM_{trend})^2} + {\sum(X11_{seasonal}-SSM_{seasonal})^2} + {\sum(X11_{seasadj}-SSM_{seasadj})^2}$ ;
+
+2. $\frac{\sum(X11_{irregular}-SSM_{irregular})^2}{\sigma_I^2} + \frac{\sum(X11_{trend}-SSM_{trend})^2}{\sigma_T^2} + \frac{\sum(X11_{seasonal}-SSM_{seasonal})^2}{\sigma_S^2}$ .
+
+
+Based on the point I mentioned above, the second measurement doesn't work anymore because:
+
+1. $(1,1,1)$ and $(100,100,100)$ actually give us the same result, but this measurement will prefer to choose the latter;
+
+2. $(100,100,100)$ could be the 'best' choice cause these numbers are denominators.
+
+**Therefore**:
+
+* I choose the first measurement mentioned above;
+
+* I change the setting of variances to 1:10.
+
+
+
+
+

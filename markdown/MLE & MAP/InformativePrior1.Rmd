@@ -1,0 +1,649 @@
+---
+title: "InformativePrior1"
+author: "Linyi Guo"
+date: "2019/11/27"
+output: 
+  html_document:
+    toc: true
+---
+
+
+```{r include=FALSE}
+rm(list=ls())
+set.seed(9483)
+```
+
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+library(ggplot2)
+library(plotly)
+```
+
+```{r include=FALSE}
+Data1 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data1.csv')
+Data2 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data2.csv')
+Data3 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data3.csv')
+Data4 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data4.csv')
+Data5 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data5.csv')
+Data6 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data6.csv')
+Data7 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data7.csv')
+Data8 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data8.csv')
+Data9 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data9.csv')
+Data0 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data0.csv')
+```
+```{r include=FALSE}
+data1 <- ts(Data1[,2], start=c(2000,01), frequency=12)
+data2 <- ts(Data2[,2], start=c(2000,01), frequency=12)
+data3 <- ts(Data3[,2], start=c(2000,01), frequency=12)
+data4 <- ts(Data4[,2], start=c(2000,01), frequency=12)
+data5 <- ts(Data5[,2], start=c(2000,01), frequency=12)
+data6 <- ts(Data6[,2], start=c(2000,01), frequency=12)
+data7 <- ts(Data7[,2], start=c(2000,01), frequency=12)
+data8 <- ts(Data8[,2], start=c(2000,01), frequency=12)
+data9 <- ts(Data9[,2], start=c(2000,01), frequency=12)
+data0 <- ts(Data0[,2], start=c(2000,01), frequency=12)
+
+
+
+data1_x11 <- seas(data1, x11='')
+data2_x11 <- seas(data2, x11='')
+data3_x11 <- seas(data3, x11='')
+data4_x11 <- seas(data4, x11='')
+data5_x11 <- seas(data5, x11='')
+data6_x11 <- seas(data6, x11='')
+data7_x11 <- seas(data7, x11='')
+data8_x11 <- seas(data8, x11='')
+data9_x11 <- seas(data9, x11='')
+data0_x11 <- seas(data0, x11='')
+```
+
+```{r include=FALSE}
+Datalist <- list(data1=data1, data2=data2, data3=data3, data4=data4, data5=data5, 
+                 data6=data6, data7=data7, data8=data8, data9=data9, data0=data0)
+```
+
+I am writing this document to ensure the variability of our loglikelihood, which is useful to set the magnitude of the coefficient in our priors.
+
+*Well, I was so stupid before cause I wanted to make them(loglikelihood and logprior curves) intersect... that's nonsense!*
+
+# Variability
+
+Again we give some functions we need at first:
+
+```{r}
+
+# loss
+Dif1 <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_irregular <- data[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+ 
+  D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+    sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+
+
+
+# exhaustion
+
+exhaustion1 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+  
+   for (i in 1:15) {
+     for (j in 1:15) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i, j, 1)
+           
+           dif <- Dif1(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+
+# loglikelihood
+
+loglikelihood <- function(data, trend, season, sigma){
+  
+  n <- length(data)
+  
+  a <- 0
+  
+  for (i in 12:n)  a <- a + (sum(season[(i-11):i]))^2
+  
+  l <- -(n-11)/2 * log(sigma[1]) - 
+    (n-11)/2 * log(sigma[2]) - (n-11)/2 * log(sigma[3]) -
+    sum((data[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/(2*sigma[1]) - 
+    sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/(2*sigma[2]) - 
+    a / (2*sigma[3])
+  
+  return(l)
+  
+}
+```
+
+Above three functions are universal for normal cases.
+
+See the loglikelihood then:
+
+```{r}
+
+# define the log likelihood matrix
+
+loglikelihood_matrix <- function(data){
+  LL <- c()
+  index <- c()
+   for (i in 1:100) {
+     for (j in 1:100) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i, j, 1)
+         
+         ll <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma)
+         LL <- c(LL, ll)
+         index <- rbind(index, sigma)
+      }
+   }
+  df <- data.frame(variance=index, loglikelihood=LL)
+  return(df)
+}
+```
+
+I need to repeat some work I have done before:
+
+```{r}
+# datalist_llmatrix is 50*50
+# datalist_llmatrix <- lapply(Datalist, loglikelihood_matrix)
+datalist_llmatrix100 <- lapply(Datalist, loglikelihood_matrix)
+```
+
+```{r}
+
+ggplot(data = datalist_llmatrix100$data1,
+       aes(x=variance.2,y=loglikelihood, fill=factor(variance.1),
+           colour=factor(variance.1))) +  geom_line()
+
+ggplot(data = datalist_llmatrix100$data1,
+       aes(x=variance.1,y=loglikelihood, fill=factor(variance.2),
+           colour=factor(variance.2))) +  geom_line()   
+
+ggplot(data = datalist_llmatrix100$data2,
+       aes(x=variance.2,y=loglikelihood, fill=factor(variance.1),
+           colour=factor(variance.1))) +  geom_line()
+
+ggplot(data = datalist_llmatrix100$data2,
+       aes(x=variance.1,y=loglikelihood, fill=factor(variance.2),
+           colour=factor(variance.2))) +  geom_line()          
+
+```
+
+Some statistics of our datasets:
+
+```{r}
+summary(data1)
+summary(series(data1_x11, 'd12'))
+summary(series(data1_x11, 'd13'))
+
+summary(data2)
+summary(series(data2_x11, 'd12'))
+summary(series(data2_x11, 'd13'))
+
+
+```
+
+```{r}
+plot(datalist_llmatrix100$data1[which(datalist_llmatrix100$data1$variance.2==50),4],
+     ylab='',type='l')
+
+plot(datalist_llmatrix100$data1[which(datalist_llmatrix100$data1$variance.2==1),4],
+     ylab='',type='l')
+
+#plot(datalist_llmatrix$data1[which(datalist_llmatrix$data1$variance.2 %in% c(25:50)),4], ylab='',type='l')
+
+ggplot(data = datalist_llmatrix100$data1[which(datalist_llmatrix100$data1$variance.2 %in% c(25:50)),], aes(x=variance.1,y=loglikelihood, fill=factor(variance.2),
+           colour=factor(variance.2))) +  geom_line()          
+
+ggplot(data = datalist_llmatrix100$data2[which(datalist_llmatrix100$data2$variance.2 %in% c(25:50)),], aes(x=variance.1,y=loglikelihood, fill=factor(variance.2),
+           colour=factor(variance.2))) +  geom_line() 
+
+
+```
+
+So here is the problem now: how large of the magnitude is what we need then? Obviously it is related to the change of the loglikelihood. 
+
+
+
+<center>**________________________________分界线________________________________**</center>
+
+**UPDATE 20191129**: I spent some time yesterday to figure out the working flow of my research. Hope this could accelerate my programming.
+
+# back to Prior 2
+
+*Review:* Here, we set our log prior as following $$logPrior=-c1*p*\sigma_y^2-c2*p*\sigma_T^2$$
+And we choose $p$ is equal to $\frac{loglikelihood(20,20,1)}{20}$, which is **TOO LARGE also STUPID :)**.
+
+But now we are going to use the log prior as 
+$$logPrior=-\beta_y*\sigma_y^2-\beta_T*\sigma_T^2$$
+where $\beta_y=\frac{c_{1y}}{100}+k_y*p_y$, $k_y=0,1,\dots,9$ and $p_y=\frac{11}{100}c_{1y}$.
+And $c_{1y}$ is computed by taking the average of $\frac{\sum(y_i-T_i-S_i)^2}{2}$ among $\sigma_y^2 = 1:10$ and $\sigma_T^2 = 1:10$.
+
+Similar in the calculation of $\beta_T$.
+
+Let's achieve what I have infered recently:
+
+```{r}
+# function to compute proportion
+proportion <- function(data){
+  c1matrix <- c()
+  n <- length(data)
+  for (i in 1:10){
+    for (j in 1:10){
+      ssmm <- SSModel(data ~ SSMtrend(1,Q=list(j)) + 
+                        SSMseasonal(12,sea.type = 'dummy',Q=1), H=i)
+      ssm <- KFS(ssmm)
+      
+      trend <- coef(ssm, states='trend')
+      season <- -rowSums(coef(ssm, states='seasonal'))
+
+      c1y <- sum((data[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/2
+      c1T <- sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/2
+      
+      c1matrix <- rbind(c1matrix, c(c1y,c1T))
+    }
+  }
+  c1 <- colMeans(c1matrix)
+  return(0.11*c1)
+}
+```
+
+```{r}
+proportion(data1)
+
+
+proportion(data2)
+
+
+```
+
+Well,这个新的proportion还是太大了点吧。
+
+We find that the values of $c_1y$ or $c_1T$ change a lot actually(see the following chunk). So what should I do now? :( 
+
+```{r}
+c1matrix <- c()
+n <- length(data1)
+for (i in 1:10){
+  for (j in 1:10){
+    ssmm <- SSModel(data1 ~ SSMtrend(1,Q=list(j)) + 
+                      SSMseasonal(12,sea.type = 'dummy',Q=1), H=i)
+    ssm <- KFS(ssmm)
+    
+    trend <- coef(ssm, states='trend')
+    season <- -rowSums(coef(ssm, states='seasonal'))
+    
+    c1y <- sum((data1[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/2
+    c1T <- sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/2
+    
+    c1matrix <- rbind(c1matrix, c(c1y,c1T))
+  }
+}
+.11 * colMeans(c1matrix)
+
+c1matrix[1:10,]
+
+c1matrix[c(1,11,21,31,41,51,61,71,81,91),]
+
+```
+
+
+# Relations between Ratio and Decompostion
+
+This part is just to double-check the result I found before: if the ratio of variances is the same then the decomposition doesn't change.
+
+
+
+```{r}
+# use data1 as an example
+## 100 100 100
+data1_ssmm100 <- SSModel(data1 ~ SSMtrend(1,Q=list(100)) + 
+                      SSMseasonal(12,sea.type = 'dummy',Q=100), H=100)
+data1_ssm100 <- KFS(data1_ssmm100)
+
+data1_ssm100_trend <- coef(data1_ssm100, states='trend')
+data1_ssm100_season <- -rowSums(coef(data1_ssm100, states='seasonal'))
+
+## 1 1 1
+data1_ssmm1 <- SSModel(data1 ~ SSMtrend(1,Q=list(1)) + 
+                      SSMseasonal(12,sea.type = 'dummy',Q=1), H=1)
+data1_ssm1 <- KFS(data1_ssmm1)
+
+data1_ssm1_trend <- coef(data1_ssm1, states='trend')
+data1_ssm1_season <- -rowSums(coef(data1_ssm1, states='seasonal'))
+
+```
+
+
+```{r}
+sum(data1_ssm100_trend - data1_ssm1_trend)
+sum(data1_ssm100_season - data1_ssm1_season)
+```
+
+Well they are basically same.
+
+```{r}
+# 10 5 1
+data1_ssmm1051 <- SSModel(data1 ~ SSMtrend(1,Q=list(5)) + 
+                      SSMseasonal(12,sea.type = 'dummy',Q=1), H=10)
+data1_ssm1051 <- KFS(data1_ssmm1051)
+
+data1_ssm1051_trend <- coef(data1_ssm1051, states='trend')
+data1_ssm1051_season <- -rowSums(coef(data1_ssm1051, states='seasonal'))
+
+# 50 25 5
+data1_ssmm50255 <- SSModel(data1 ~ SSMtrend(1,Q=list(25)) + 
+                      SSMseasonal(12,sea.type = 'dummy',Q=5), H=50)
+data1_ssm50255 <- KFS(data1_ssmm50255)
+
+data1_ssm50255_trend <- coef(data1_ssm50255, states='trend')
+data1_ssm50255_season <- -rowSums(coef(data1_ssm50255, states='seasonal'))
+
+
+```
+
+
+```{r}
+sum(data1_ssm1051_trend - data1_ssm50255_trend)
+sum(data1_ssm1051_season - data1_ssm50255_season)
+```
+
+Well they are still basically equal.
+
+**So no need to worry about this FACT for now although I don't know the potential theory.**
+
+
+# back to the variability
+
+I already sent my questions to Aaron hope he could give me some good hints tmr. But still I need to count on myself:)
+
+# what's the difference between variances if we double the data?
+
+Here, we use data1 as an example:
+
+```{r}
+data1_exhaustion <- exhaustion1(data1)
+data1_exhaustion[which.min(data1_exhaustion$difference),]
+```
+
+then we double the data1 denoted as data1_1, and do the same thing:
+
+```{r}
+data1_1 <- 2*data1
+
+data1_1_exhaustion <- exhaustion1(data1_1)
+data1_1_exhaustion[which.min(data1_1_exhaustion$difference),]
+```
+
+Let's do the same thing on data2 and data3:
+
+```{r}
+data2_exhaustion <- exhaustion1(data2)
+data2_exhaustion[which.min(data2_exhaustion$difference),]
+```
+
+then we double the data2 denoted as data2_1, and do the same thing:
+
+```{r}
+data2_1 <- 2*data2
+
+data2_1_exhaustion <- exhaustion1(data2_1)
+data2_1_exhaustion[which.min(data2_1_exhaustion$difference),]
+```
+
+
+
+```{r}
+data3_exhaustion <- exhaustion1(data3)
+data3_exhaustion[which.min(data3_exhaustion$difference),]
+```
+
+then we double the data3 denoted as data3_1, and do the same thing:
+
+```{r}
+data3_1 <- 2*data3
+
+data3_1_exhaustion <- exhaustion1(data3_1)
+data3_1_exhaustion[which.min(data3_1_exhaustion$difference),]
+```
+
+thus we know: **for the same dataset, we can still get the same best fit from exhaustion method even though we doubled it**, which is reasonable.
+
+# test what happened to LL around 0!
+
+```{r}
+
+# define the log likelihood matrix
+
+loglikelihood_matrix_0 <- function(data){
+  LL <- c()
+  index <- c()
+   for (i in 1:100) {
+     for (j in 1:100) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j*0.025)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i*0.025)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i, j, 1)
+         
+         ll <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma)
+         LL <- c(LL, ll)
+         index <- rbind(index, sigma)
+      }
+   }
+  df <- data.frame(variance=index, loglikelihood=LL)
+  return(df)
+}
+```
+
+
+```{r}
+datalist_llmatrix_0 <- lapply(Datalist, loglikelihood_matrix_0)
+```
+
+
+```{r}
+
+ggplot(data = datalist_llmatrix_0$data1,
+       aes(x=variance.2,y=loglikelihood, fill=factor(variance.1),
+           colour=factor(variance.1))) +  geom_line()
+
+ggplot(data = datalist_llmatrix_0$data1,
+       aes(x=variance.1,y=loglikelihood, fill=factor(variance.2),
+           colour=factor(variance.2))) +  geom_line()   
+
+ggplot(data = datalist_llmatrix_0$data2,
+       aes(x=variance.2,y=loglikelihood, fill=factor(variance.1),
+           colour=factor(variance.1))) +  geom_line()
+
+ggplot(data = datalist_llmatrix_0$data2,
+       aes(x=variance.1,y=loglikelihood, fill=factor(variance.2),
+           colour=factor(variance.2))) +  geom_line()          
+
+```
+
+Well, they still look like the curve of c/x.
+
+I am thinking maybe I should extract the curves corresponding to the best fit separately......let's try it:
+
+*data1: c(4,2,1);  data2: c(15,6,1)*
+
+```{r}
+
+ggplot(data = subset(datalist_llmatrix_0$data1, variance.1 == 4),
+       aes(x=variance.2,y=loglikelihood)) +  geom_line()
+
+ggplot(data = subset(datalist_llmatrix_0$data1, variance.2 == 2),
+       aes(x=variance.1,y=loglikelihood)) +  geom_line()   
+
+ggplot(data = subset(datalist_llmatrix_0$data2, variance.1 == 15),
+       aes(x=variance.2,y=loglikelihood)) +  geom_line()
+
+ggplot(data = subset(datalist_llmatrix_0$data2, variance.2 == 6),
+       aes(x=variance.1,y=loglikelihood)) +  geom_line()   
+```
+
+# Approximate the loglikelihood curves
+
+I still think I can use the former setting of the coefficients in my prior but I need to come up with a method to normalize the loss.
+
+# Normalize the total loss
+
+$$TOTALLOSS = \sum_{i=1}^{n}Loss_i * \frac{l_i}{\sum_{j=1}^nl_j} * \frac{m_i^2}{\sum_{j=1}^nm_j^2}$$
+
+where $l_1,\dots,l_n$ is the ratio of data's lengths and $m_1,...,m_n$ is the ratio of means of data.
+
+*UPDATE 20191207: this seems to be wrong we correct this later!*
+
+```{r}
+# NOTE: lratio and m2ratio is after normalization
+totalloss <- function(losslist, lratio, m2ratio){
+  totalloss <- 0
+  for(i in 1:length(losslist)){
+    totalloss <- totalloss + losslist[i]*lratio[i]*m2ratio[2]
+  }
+  return(totalloss)
+}
+```
+
+In our problem, the lratio and m2ratio are computed by:
+
+```{r}
+lengthratio <- sapply(Datalist, function(x) length(x)/sum(sapply(Datalist, length)))
+
+ 
+mean2ratio <- sapply(Datalist, function(x) {
+  mean(x)^2/sum(sapply(Datalist, function(x) mean(x)^2))
+})
+
+```
+
+I may take a rest for now. 
+
+<center>**________________________________分界线________________________________**</center>
+
+**UPDATE 20191204** : I just met with Aaron so have a lot of stuff to do now.
+
+But the thing clear to me is that i) ensure the value where LL behaves normal; ii) redefine a total loss function and do grid search.
+
+# ensure the value since where LL behaves normal
+
+I use the $f(x) = - \frac{c_1}{x}-c_2$ as the approximation of LL in 1-dimentional case. and for LL the whole approximation would be:
+$$LL(\sigma_y^2, \sigma_T^2) \approx -\frac{c_{1y}}{\sigma_y^2}-c_{2y}-\frac{c_{1T}}{\sigma_T^2}-c_{2T} $$
+
+where $c_{1y}$ and $c_{1T}$ is computed by taking average of $\frac{\sum{(y_i-T_i-S_i)^2}}{2} $ and $\frac{\sum(T_i-T_{i-1})^2}{2} $ among $\sigma_y^2$ and $\sigma_T^2$ in 1,..., 10(or some greater number? like 50, 100)
+
+Since $c_2$s don't matter for our map estimator, ignore them first.
+
+## The function to compute c1
+
+```{r}
+c1 <- function(data){
+  c1matrix <- c()
+  n <- length(data)
+  for (i in 1:100){
+    for (j in 1:100){
+      ssmm <- SSModel(data ~ SSMtrend(1,Q=list(j)) + 
+                        SSMseasonal(12,sea.type = 'dummy',Q=1), H=i)
+      ssm <- KFS(ssmm)
+      
+      trend <- coef(ssm, states='trend')
+      season <- -rowSums(coef(ssm, states='seasonal'))
+
+      c1y <- sum((data[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/2
+      c1T <- sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/2
+      
+      c1matrix <- rbind(c1matrix, c(c1y,c1T))
+    }
+  }
+  c1 <- colMeans(c1matrix)
+  return(c1)
+}
+
+```
+
+Then let's see the ratio in data1:
+
+```{r}
+data1_llmatrix_0 <- loglikelihood_matrix_0(data1)
+data1_c1 <- c1(data1)
+data1_llmatrix_0$ratio <- (-data1_c1[1]/data1_llmatrix_0$variance.1)/data1_llmatrix_0$loglikelihood
+
+ggplot(data= data1_llmatrix_0, aes(x=variance.1,y=ratio, fill=factor(variance.2),
+                                     colour= factor(variance.2))) +  geom_line()
+
+
+
+```
+
+~~随便写点东西吧。很烦。东西一直没有进展。不知道是我自己的问题。还是研究的问题本身的问题。又或者，是导师的问题。我相信有些东西是错了的。事情本身不应该这样。一步一步探索吧。现在走的弯路是将来成功的垫脚石。至少我相信这个。做个聪明人。~~
+
+</br>
+
+<center>**-论文是做研究过程中的副产品-**
+
+**-放低你的姿态-**</center>
+
+</br>
+
+```{r}
+data1_ssmm <- SSModel(data1 ~ SSMtrend(1,Q= list(NA)) + 
+                                        SSMseasonal(12,sea.type = 'dummy',Q=1), H=NA)
+data1_fit <- fitSSM(data1_ssmm, inits = c(0,0), method='BFGS')
+
+data1_ssm <- KFS(data1_fit$model)
+
+
+
+data1_fit$optim.out
+```
+
+
+
+
+
+
+

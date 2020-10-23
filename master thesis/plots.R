@@ -1,0 +1,12 @@
+rm(list = ls())
+setwd('C:\\Users\\GuoLY\\Desktop\\master thesis')
+
+library(seasonal)
+library(KFAS)
+library(doParallel)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(forecast)
+library(extraDistr)
+library(lubridate)

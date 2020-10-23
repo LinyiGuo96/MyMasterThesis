@@ -1,0 +1,321 @@
+---
+title: "report20191120"
+author: "Linyi Guo"
+date: "2019/11/17"
+output: 
+  html_document:
+    toc: true
+  pdf_document:
+    toc: true
+---
+
+
+```{r include=FALSE}
+rm(list=ls())
+set.seed(9483)
+```
+
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+library(ggplot2)
+library(plotly)
+```
+
+# Preface
+
+The first two parts are not very related to the bayes/posterior. They are mainly about the problems I met when preparing for MAP computation and the corresponding solutions. 
+
+For our datasets, they can be devided as two classes generally: one is those we could use almost directly the other one is those that need to be taken log-transformation. In this report, I choose 10 different sub-datasets from statcan's Retailsales dataset randomly and they are Total, Automobile, Automobile parts, Clothing stores, Furninshings, Beer&wine&liquor stores, Grocery stores, Health&personal care stores, motor and Sporting goods&hobby&book&music stores in sequence. They are denoted as data1, data2, ... data9 and data10 in the following.
+
+```{r include=FALSE}
+Data1 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\total.csv')
+Data2 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\automobile.csv')
+Data3 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Automotive parts.csv')
+Data4 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Clothing stores.csv')
+Data5 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\furnishings.csv')
+Data6 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Beer, wine and liquor stores.csv')
+Data7 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Grocery stores.csv')
+Data8 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Health and personal care stores.csv')
+Data9 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\motor.csv')
+Data10 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Sporting goods, hobby, book and music stores.csv')
+
+
+data1 <- ts(Data1[,1], start=c(2004,01), frequency=12)
+data2 <- ts(Data2[,1], start=c(2004,01), frequency=12)
+data3 <- ts(Data3[,1], start=c(2004,01), frequency=12)
+data4 <- ts(Data4[,1], start=c(2004,01), frequency=12)
+data5 <- ts(Data5[,1], start=c(2004,01), frequency=12)
+data6 <- ts(Data6[,1], start=c(2004,01), frequency=12)
+data7 <- ts(Data7[,1], start=c(2004,01), frequency=12)
+data8 <- ts(Data8[,1], start=c(2004,01), frequency=12)
+data9 <- ts(Data9[,1], start=c(2004,01), frequency=12)
+data10 <- ts(Data10[,1], start=c(2004,01), frequency=12)
+
+data1_x11 <- seas(data1, x11='')
+data2_x11 <- seas(data2, x11='')
+data3_x11 <- seas(data3, x11='')
+data4_x11 <- seas(data4, x11='')
+data5_x11 <- seas(data5, x11='')
+data6_x11 <- seas(data6, x11='')
+data7_x11 <- seas(data7, x11='')
+data8_x11 <- seas(data8, x11='')
+data9_x11 <- seas(data9, x11='')
+data10_x11 <- seas(data10, x11='')
+```
+
+Among these datasets, only data5 and data7 are free from log-transformation.
+</br>
+
+# Part I: Normal Cases
+
+## Problem 1
+
+When I applied the former exhaustion method on data5&data7 and compared the results from the corresponding SSM, I found the results are quite different. For example, the trends from SSM and X11 of data5&data7 are following in order:
+
+```{r echo=FALSE}
+data5_ssmmexhaustion <- SSModel(data5 ~ SSMtrend(1, Q=list(10)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 23)
+data5_ssmexhaustion <- KFS(data5_ssmmexhaustion)
+
+data5_ssmexhaustion_trend <- coef(data5_ssmexhaustion, states = 'trend')
+data5_ssmexhaustion_seasonal <- -rowSums(coef(data5_ssmexhaustion, states='seasonal'))
+data5_ssmexhaustion_irregular <- data5[-1] - data5_ssmexhaustion_trend[-1] - data5_ssmexhaustion_seasonal[-length(data7)]
+
+plot(data5_ssmexhaustion_trend,ylim=c(3*10^5, 6*10^5),ylab='')
+par(new=TRUE)
+plot(series(data5_x11, 'd12'),ylim=c(3*10^5, 6*10^5),ylab='',col=2)
+title('trend')
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+```
+
+
+```{r echo=FALSE}
+
+data7_ssmm50 <- SSModel(data7 ~ SSMtrend(1, Q=list(50)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 50)
+data7_ssm50 <- KFS(data7_ssmm50)
+
+data7_ssm50_trend <- coef(data7_ssm50, states = 'trend')
+data7_ssm50_seasonal <- -rowSums(coef(data7_ssm50, states='seasonal'))
+data7_ssm50_irregular <- data7[-1] - data7_ssm50_trend[-1] - data7_ssm50_seasonal[-length(data7)]
+
+plot(data7_ssm50_trend,ylim=c(5*10^6,8*10^6),ylab='')
+par(new=TRUE)
+plot(series(data7_x11, 'd12'),ylim=c(5*10^6,8*10^6),col=2,ylab='')
+title('trend')
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+```
+
+## Solution 1
+
+As we know there is some preprocessing procedure in X11/TRAMO-SEATS methods, so to simplify our problem I decide to compute the preprocessed data at first and then use the new data as our real data. The reason why I did it is that our state-space model is built on a **noise(outlier)-free** assumption. Maybe we could find ways to consider various outliers in our model. 
+
+The results built on the preprocessed data is as following:
+
+```{r include=FALSE}
+data1 <- series(data1_x11, 'b1')
+data2 <- series(data2_x11, 'b1')
+data3 <- series(data3_x11, 'b1')
+data4 <- series(data4_x11, 'b1')
+data5 <- series(data5_x11, 'b1')
+data6 <- series(data6_x11, 'b1')
+data7 <- series(data7_x11, 'b1')
+data8 <- series(data8_x11, 'b1')
+data9 <- series(data9_x11, 'b1')
+data10 <- series(data10_x11, 'b1')
+
+data1_x11 <- seas(data1, x11='')
+data2_x11 <- seas(data2, x11='')
+data3_x11 <- seas(data3, x11='')
+data4_x11 <- seas(data4, x11='')
+data5_x11 <- seas(data5, x11='')
+data6_x11 <- seas(data6, x11='')
+data7_x11 <- seas(data7, x11='')
+data8_x11 <- seas(data8, x11='')
+data9_x11 <- seas(data9, x11='')
+data10_x11 <- seas(data10, x11='')
+```
+
+```{r echo=FALSE}
+# 9,3,1 and 10,3,1 are results from exhaustion methods
+data5_ssmmexhaustion <- SSModel(data5 ~ SSMtrend(1, Q=list(3)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 9)
+data5_ssmexhaustion <- KFS(data5_ssmmexhaustion)
+
+
+data7_ssmmexhaustion <- SSModel(series(data7_x11,'b1') ~ SSMtrend(1, Q=list(3)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 10)
+data7_ssmexhaustion <- KFS(data7_ssmmexhaustion)
+
+
+data5_ssmexhaustion_trend <- coef(data5_ssmexhaustion, states = 'trend')
+data5_ssmexhaustion_seasonal <- -rowSums(coef(data5_ssmexhaustion, states='seasonal'))
+data5_ssmexhaustion_irregular <- data5[-1] - data5_ssmexhaustion_trend[-1] - data5_ssmexhaustion_seasonal[-length(data5)]
+
+data7_ssmexhaustion_trend <- coef(data7_ssmexhaustion, states = 'trend')
+data7_ssmexhaustion_seasonal <- -rowSums(coef(data7_ssmexhaustion, states='seasonal'))
+data7_ssmexhaustion_irregular <- data7[-1] - data7_ssmexhaustion_trend[-1] - data7_ssmexhaustion_seasonal[-length(data7)]
+
+
+plot(data5_ssmexhaustion_trend,ylim=c(3*10^5, 6*10^5),ylab='')
+par(new=TRUE)
+plot(series(data5_x11, 'd12'),ylim=c(3*10^5, 6*10^5),ylab='',col=2)
+title('trend')
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+
+plot(data7_ssmexhaustion_trend,ylim=c(5*10^6,8*10^6),ylab='')
+par(new=TRUE)
+plot(series(data7_x11, 'd12'),ylim=c(5*10^6,8*10^6),col=2,ylab='')
+title('trend')
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+```
+
+## Problem 2
+
+The datasets I have that doesn't require log-transformation for now are data5, data7 and unemp and I put a **same baby(improper) prior** on them.
+
+Suppose each prior is exponential:
+$$Prior(\sigma_y^2) = exp(-c1*\sigma_y^2)$$
+$$Prior(\sigma_T^2) = exp(-c2*\sigma_T^2)$$
+
+then our prior is:
+$$Prior = exp(-c1*\sigma_y^2-c2*\sigma_T^2)$$
+
+then logprior is:
+$$logPrior=-c1*\sigma_y^2-c2*\sigma_T^2$$
+
+Therefore, with our loglikelihood(because of the seasonal component, we can't compute the likelihood of first 11 points):
+$$logLikelihood = -\frac{n-11}{2}log(\sigma_y^2)-\frac{n-11}{2}log(\sigma_T^2)-\frac{n-11}{2}log(\sigma_S^2)-\frac{\sum_{i=12}^{n}(y_i-T_i-S_i)^2}{2\sigma_y^2}-\frac{\sum_{i=12}^{n}(T_i-T_{i-1})^2}{2\sigma_T^2}-\frac{\sum_{i=12}^{n}(\sum_{j=0}^{11}S_{i-j})^2}{2\sigma_S^2}$$
+
+Our maximum a posteriori(**MAP**) estimate is:
+$$MAP=\underset{\sigma_y^2, \sigma_T^2}{\arg\max}(logLikelihood+logPrior)$$
+
+Again, I use the *grid search/exhaustion* method to find the values of c1 and c2 corresponding to the smallest loss over three datasets.  
+**But** the result is not good. 
+
+## Solution 2
+
+As for the reason of the above result, it is due to the magnitude of data7 is much greater than the other two datasets. Thus it plays the main role in the sum of loss.
+
+The results are like:
+```{r echo=FALSE}
+prior1_c1c2 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\MLE & MAP\\prior1_c1c2.csv')
+head(prior1_c1c2)
+```
+
+The 'best' c1&c2 are $c(10^8,10^9)$. Under this, the MAP estimators for data5, data7 and unemp are $c(8,1,1) c(20,7,1)$ and $c(1,1,1)$, which is quite different from their 'best' fit $c(9,3,1) c(10,3,1)$ and $c(7,5,1)$. 
+
+To **fix** this, like what we talked last time, the coefficient of priors should be some function related to our data.
+
+I will continue with this question at **PART III**.
+
+# Part II Transformation-needed Cases
+
+The most different point of these transformation-needed cases is that the magnitude is much smaller than normal cases, which did influence our choice of MLE but did not influence our exhaustion part too much.
+
+## Problem 1
+
+Since our loss function is:
+$$Loss=\frac{\sum(X11_{irregular}-SSM_{irregular})^2}{\sigma_I^2} + \frac{\sum(X11_{trend}-SSM_{trend})^2}{\sigma_T^2} + \frac{\sum(X11_{seasonal}-SSM_{seasonal})^2}{\sigma_S^2}$$
+
+and we take log at first in the state-space model.
+
+Thus we need to **take exponential** of components from SSM before pluging in the loss function. **BUT**  if we do this, the result from exhaustion is not quite bad. For example, the 'best' fit is c(50,50,1) if we set the range of variances is [1,50].
+
+The corresponding definition of loss function is:
+
+```
+Dif2 <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- exp(coef(ssm, states = 'trend'))
+  ssm_seasonal <- exp(-rowSums(coef(ssm, states='seasonal')))
+  ssm_irregular <- data[-1]/(ssm_trend[-1]*ssm_seasonal[-length(data)])
+ 
+  D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+    sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+```
+
+
+
+
+## Solution 1
+
+Notice our variance is aimed at the log-components, to make our loss function work we should unify our data's format which means we should **take log of components from X11 instead of taking exponential of components from SSM**. The modified loss function is:
+
+```
+Dif3 <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_irregular <- log(data)[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+ 
+  D <-  sum((log(x11_irregular[-1])-ssm_irregular)^2)/sigma[1] + 
+    sum((log(x11_trend)-ssm_trend)^2)/sigma[2] + 
+    sum((log(x11_seasonal[-1])-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+```
+
+Then the exhaustion result is more reasonable. For example, the 'best' fit for data1 is c(5,5,1), and the data2's is c(9,6,1)
+
+
+## Problem 2 & Analysis
+
+If we look at the MLE of those cases, we may find: different from the situation in normal cases, we usually prefer to choose the **minimum value of our setting as the MLE** of variances here. Cause if we look at our loglikelihood function we will notice that if the magnitude of our data is not too large then the small variance will enlarge the first three items, which makes us prefer to choose the smaller value.
+
+$$logLikelihood = -\frac{n-11}{2}log(\sigma_y^2)-\frac{n-11}{2}log(\sigma_T^2)-\frac{n-11}{2}log(\sigma_S^2)-\frac{\sum_{i=12}^{n}(y_i-T_i-S_i)^2}{2\sigma_y^2}-\frac{\sum_{i=12}^{n}(T_i-T_{i-1})^2}{2\sigma_T^2}-\frac{\sum_{i=12}^{n}(\sum_{j=0}^{11}S_{i-j})^2}{2\sigma_S^2}$$
+
+**However, this is not always true.** After some calculation, I found that the critical point of one single variance,say $\sigma_y^2$, is around $\frac{\sum_{i=12}^{n}(y_i-T_i-S_i)^2}{n-11}$. So if we could choose a suitable interval we will find there is a bump among the loglikelihood curve. On the other hand, for normal cases, we will find a similar bump as well but this value is usually very large. 
+
+**Therefore**, our prior for both cases should be different.
+</br>
+
+# Part III
+
+## Normal cases
+
+As we mentioned before our prior(log-prior) is improper at first.
+
+My strategy for the coefficient c1 and c2 is to multiply a large number related to our data, denoted by $p$. 
+
+I choose $p=\frac{loglikelihood(50,50,1)}{50}$ and the final result is: 
+$$c1=3\qquad c2=10$$
+which is not good, cause the limit of c is [1:10].
+
+And the map estimates for data5, data7 and unemp under this setting are $$c(15,7,1)\qquad c(15,9,1) \qquad c(14,13,1) $$
+which is also not good, cause the limit of variances is [1:15]. I used [1:50] before but because of the computational problem I changed it to [1:15], and this is the reason why I use $p=\frac{loglikelihood(50,50,1)}{50}$.
+
+Because of this problem, I changed the choice of p: 
+$p=\frac{loglikelihood(20,20,1)}{20}$ and the output of c is:
+$$c1=3\qquad c2=8$$
+which exclude the possibility that the real good c2 is greater than 10.
+
+And the map estimates now are
+$$c(10,3,1)\qquad c(10,3,1)\qquad c(5,6,1)$$
+which is much closer to the results from our exhaustion part.($c(9,3,1)\quad c(10,3,1)\quad c(7,5,1)$)
+
+## Transformation-needed cases
+
+
+
+
+

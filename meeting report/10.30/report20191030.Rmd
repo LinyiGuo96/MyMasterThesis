@@ -1,0 +1,344 @@
+---
+title: "Report10.30"
+author: "Linyi Guo"
+date: "2019/10/29"
+output: 
+   html_document:
+     toc: true
+---
+
+```{r include=FALSE}
+rm(list=ls())
+set.seed(9483)
+```
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+library(plotly)
+library(htmlwidgets)
+```
+
+# Exhaustion 
+
+## Review
+
+At our last meeting, I use the error defined below to find the 'best' estimate:
+$$(\sum(X11_{trend}-SSM_{trend})^2) * (\sum(X11_{seasonal}-SSM_{seasonal})^2) * (\sum(X11_{seasadj}-SSM_{seasadj})^2)$$
+
+And the setting of variance is $(0.001,0.01,0.1,1,10,100)$.
+
+## Update
+
+After some **exploration**, I found one point I didn't find before:
+
+* As long as the ratio among variances keep same, the result from Kalman filter is same.
+
+
+**Exploration** means: I tried two error measurements we mentioned last time, which are
+
+1. ${\sum(X11_{trend}-SSM_{trend})^2} + {\sum(X11_{seasonal}-SSM_{seasonal})^2} + {\sum(X11_{seasadj}-SSM_{seasadj})^2}$ ;
+
+2. $\frac{\sum(X11_{irregular}-SSM_{irregular})^2}{\sigma_I^2} + \frac{\sum(X11_{trend}-SSM_{trend})^2}{\sigma_T^2} + \frac{\sum(X11_{seasonal}-SSM_{seasonal})^2}{\sigma_S^2}$ .
+
+
+Based on the point I mentioned above, the second measurement doesn't work anymore because:
+
+1. $(1,1,1)$ and $(100,100,100)$ actually give us the same result, but this measurement will prefer to choose the latter;
+
+2. $(100,100,100)$ could be the 'best' choice cause these numbers are denominators, but they are not in fact.
+
+## Conclusion
+
+* I choose the first measurement mentioned above;
+
+* I change the setting of variances to 1:10 and 1:20 separately.
+
+And the best fits are $(10,7,4)$ and $18,12,7$ separately.
+
+Related Code is defined below: 
+
+```{r}
+# define our standard to choose parameters
+# note this is for additive models
+Dif <- function(x11, ssm, data){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_seasadj <- series(x11, 'd11')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+ 
+  D <-  sum((x11_trend-ssm_trend)^2) + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2) +
+    sum((x11_seasadj[-1]-ssm_seasadj)^2)
+    
+  return(D)
+}
+```
+
+```{r}
+# define the search function
+exhaustion_version2 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:10) {
+     for (j in 1:10) {
+       for (k in 1:10) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = k),
+                   H = i)
+           ssm <- KFS(ssmm)
+           
+           dif <- Dif(x11, ssm, data)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, c(i, j, k))
+         }
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```{r}
+unemp_exhaustionversion2 <- exhaustion_version2(unemp)
+unemp_exhaustionversion2[which.min(unemp_exhaustionversion2$difference),]
+```
+
+*Note: need to change 10 to 20 in function exhaustion_version2 manually.*
+
+# MLE 
+
+## Review 
+
+At the last meeting, my result is composed by NaNs and 0s(same in the MAP estimate).
+
+## Update
+
+I switch to loglikelihood after our meeting, and the result is good! 
+
+According to my result, the maximum likelihood estimate is $(10,10,4)$ which is different from the best fit $(10,7,4)$ we gained before. 
+
+The code to have this result is below: (variance setting is 1:10)
+
+```{r}
+# define the log likelihood function
+# because of seasonal components' characteristic
+# I didn't compute the loglikelihood at first 11 points
+
+loglikelihood <- function(data, trend, season, sigma){
+  
+  n <- length(data)
+  a <- 0
+  for (i in 12:n)  a <- a + (sum(season[(i-11):i]))^2
+  l <- -(n-11)/2 * log(sigma[1]) - 
+    (n-11)/2 * log(sigma[2]) - (n-11)/2 * log(sigma[3]) -
+    sum((data[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/(2*sigma[1]) - 
+    sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/(2*sigma[2]) - 
+    a / (2*sigma[3])
+  return(l)
+  
+}
+
+```
+
+```{r}
+# define the log likelihood matrix
+loglikelihood_matrix <- function(data){
+  LL <- c()
+  index <- c()
+   for (i in 1:10) {
+     for (j in 1:10) {
+       for (k in 1:10) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = k),
+                 H = i)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i, j, k)
+         
+         ll <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma)
+         LL <- c(LL, ll)
+         index <- rbind(index, sigma)
+         }
+      }
+   }
+  df <- data.frame(variance=index, loglikelihood=LL)
+  return(df)
+}
+```
+
+```{r}
+unemp_loglikelihoodmatrix <- loglikelihood_matrix(unemp)
+unemp_loglikelihoodmatrix[which.max(unemp_loglikelihoodmatrix$loglikelihood),]
+```
+
+## Data Visualization
+
+I spent quite a long time trying to plot the matrix I received above. The main difficulties are:
+
+1. it is a 4-D problem;
+
+2. if we negotiate to plot 3-D data(fix one variance at a time), our variance is discreat, which means we could have scatterplot without problem, but how to connect points to a surface? I did **NOT** find the solution. 
+
+I have some results for 3-D cases, but since they are scatterplot, the interpretation is not very good.
+
+*Remember: the mle is (10,10,4).*
+
+
+
+### Fix $\sigma_y^2$
+
+I will fix $\sigma_y^2$ at 1:10, then plot the other two variance with loglikelihood successively:
+
+```{r echo=FALSE}
+l1 <- htmltools::tagList()
+for (i in 1:10) {
+
+  matrix <- unemp_loglikelihoodmatrix[which(unemp_loglikelihoodmatrix$variance.1 == i),]
+  
+   l1[[i]] <- plot_ly(matrix) %>% add_markers(x = ~variance.2 , y=~variance.3, z=~loglikelihood,color=~loglikelihood)
+}
+
+l1
+
+```
+
+
+### Fix $\sigma_T^2$
+
+```{r echo=FALSE}
+l2 <- htmltools::tagList()
+for (i in 1:10) {
+
+  matrix <- unemp_loglikelihoodmatrix[which(unemp_loglikelihoodmatrix$variance.2 == i),]
+  
+   l2[[i]] <- plot_ly(matrix) %>% add_markers(x = ~variance.1 , y=~variance.3, z=~loglikelihood,color=~loglikelihood)
+}
+
+l2
+```
+
+
+### Fix $\sigma_S^2$
+
+```{r echo=FALSE}
+l3 <- htmltools::tagList()
+for(i in 1:10){
+  matrix <- unemp_loglikelihoodmatrix[which(unemp_loglikelihoodmatrix$variance.3 == i),]
+  
+  l3[[i]] <- print(plot_ly(matrix) %>% add_markers(x = ~variance.1 , y=~variance.2, z=~loglikelihood,color=~loglikelihood))
+}
+l3
+```
+
+
+Based on these results, the intuitive conclusion **may be**: 
+
+* with $\sigma_y^2$ and $\sigma_T^2$ increasing, (log)likelihood will increase; 
+
+* with $\sigma_S^2$ increasing, (log)likelihood will decrease.
+
+### Alternative choice
+
+Here, I fix $\sigma_y^2$ at 10, and plot the corresponding loglikelihood w.r.t. $\sigma_S^2$ when $\sigma_T^2$ changes from 1 to 10:
+
+```{r echo=FALSE}
+ggplot(data=unemp_loglikelihoodmatrix[which(unemp_loglikelihoodmatrix$variance.1 == 10),], aes(x=variance.3, y=loglikelihood, fill=factor(variance.2), colour=factor(variance.2))) + 
+  geom_line(size=1)
+```
+
+Plot them separately:
+
+```{r echo=FALSE}
+for (i in 1:10){
+p <- ggplot(data=unemp_loglikelihoodmatrix[which(unemp_loglikelihoodmatrix$variance.1 == 10 & unemp_loglikelihoodmatrix$variance.2==i),], aes(x=variance.3, y=loglikelihood)) + 
+  geom_line() 
+
+print(p)
+}
+```
+
+# MAP Estimate
+
+Here, I choose the gamma distribution as the prior for single parameters, and have the following assumptions/settings:
+
+1. Each parameter has different prior distribution;
+
+2. Our prior is defined as the product of three gamma distributions;
+
+3. The ratio among $\sigma_y^2,\sigma_T^2,\sigma_S^2$ is 10:5:1, thus the expectations of three gamma dist'ns are 10, 5 and 1;
+
+4. Shape parameters in three gamma distributions are taken from $2,2^2, 2^3,2^4,2^5$, that is to say we compute the map estimate `r 5^3` times;
+
+5. Most important: we take **LOG** here.
+
+The code is defined below:
+
+```{r}
+logPrior_gamma <- function(sigma, alpha, beta){
+  (alpha[1]-1) * log(sigma[1]) - sigma[1]/beta[1] +
+  (alpha[2]-1) * log(sigma[2]) - sigma[2]/beta[2] +
+  (alpha[3]-1) * log(sigma[3]) - sigma[3]/beta[3] 
+}
+```
+
+```{r}
+logposterior <- function(data, trend, season, sigma, alpha, beta){
+  loglikelihood(data,trend,season,sigma) + logPrior_gamma(sigma, alpha, beta)
+}
+```
+
+```{r}
+logposterior_matrix <- function(data, alpha, beta){
+  LP <- c()
+  index <- c()
+   for (i in 1:10) {
+     for (j in 1:10) {
+       for (k in 1:10) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = k),
+                 H = i)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i, j, k)
+         
+         lp <- logposterior(data, ssm_trend, ssm_seasonal, sigma, alpha, beta)
+         LP <- c(LP, lp)
+         index <- rbind(index, sigma)
+         }
+      }
+   }
+  df <- data.frame(variance=index, logposterior=LP)
+  return(df)
+}
+```
+
+Since the time is quite long, I will import the final dataset directly:
+
+```{r include=FALSE}
+unemp_LP_gammamatrix <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\MLE & MAP\\unemp_LP_gammamatrix.csv')
+```
+
+```{r}
+head(unemp_LP_gammamatrix)
+```
+
+And the result shows the map value is always $(10,10,4)$ under our setting of priors.

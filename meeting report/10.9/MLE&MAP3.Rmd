@@ -1,0 +1,431 @@
+---
+title: "MLE&MAP3"
+author: "LinyiGuo"
+date: "2019/10/6"
+output: 
+  pdf_document:
+    toc: true
+  html_document:
+    toc: true 
+---
+
+```{r echo = FALSE} 
+rm(list = ls())
+set.seed(9483)
+```
+```{r echo = FALSE}
+library(KFAS)
+library(tseries)
+library(seasonal)
+library(ggplot2)
+```
+
+# Grid search 
+
+Grid search is to calculate the MLE or MAP, which could avoid local minimum value.
+
+**Likelihood & Loglikelihood**
+
+```{r}
+# define likelihood function
+
+likelihood <- function(theta, Trend, Season, Obs){
+  n <- length(Obs)
+  a <- 0 
+  for (i in 12:n)  a <- a + (sum(Season[(i-11):i]))^2
+  L <- (1/sqrt(2*pi*prod(theta)))^n * 
+          exp(-sum((Obs - Trend - Season)^2)/(2*theta[1])) * 
+          exp(-sum((Trend[-1]-Trend[-n])^2)/(2*theta[2])) *
+          exp(- a/(2*theta[3]))
+  return(L)
+}
+
+
+# loglikelihood
+loglikelihood <- function(theta, Trend, Season, Obs ){
+  n <- length(Obs)
+  a <- 0
+  for (i in 12:n)  a <- a + (sum(Season[(i-11):i]))^2
+  l <- (-n/2) * log(theta[1]) - n/2 * log(theta[2]) - n/2 * log(theta[3]) -
+    sum((Obs-Trend-Season)^2)/(2*theta[1]) - 
+    sum((Trend[-1]-Trend[-n])^2)/(2*theta[2]) - 
+    a / (2*theta[3])
+  return(l)
+}
+
+```
+
+## Grid Search for Single Parameter 
+
+Here, I fix two variances at **1** and let the other one is a sequence with 10000 points.
+
+1. variances in observation function are $0.001,0.002, \dots , 10$
+
+2. variances in trend function are $0.01,0.02, \dots , 100$
+
+3. variances in seasonal function are $0.01,0.02, \dots , 100$
+
+### MLE
+
+This is my code for related function:
+
+```{r}
+# define a 'large' function to return the loglikelihood series of one single parameter's sequence
+loglikelihood_single_gs <- function(data, type){
+  if(type == 1) {
+    l1 <- c()
+    for (i in 1:10000){
+      ssm <- SSModel(data ~ SSMtrend(1, Q=list(1)) + 
+                       SSMseasonal(12, sea.type = 'dummy', Q=1), H=i*0.001)
+      mod <- KFS(ssm)
+      Trend <- coef(mod, states = 'trend')
+      Season <- rowSums(coef(mod, states = 'seasonal'))
+      theta <- c(i*0.001,1,1)
+      l1 <- c(l1, loglikelihood(theta=theta, Trend=Trend, Season=Season, Obs = data))
+    }
+    return(l1)
+  }
+  
+  if(type == 2){
+    l2 <- c()
+    for (i in 1:10000){
+      ssm <- SSModel(data ~ SSMtrend(1, Q=list(i*0.01)) + 
+                       SSMseasonal(12, sea.type = 'dummy', Q=1), H=1)
+      mod <- KFS(ssm)
+      Trend <- coef(mod, states = 'trend')
+      Season <- rowSums(coef(mod, states = 'seasonal'))
+      theta <- c(1,i*0.01,1)
+      l2 <- c(l2, loglikelihood(theta=theta, Trend=Trend, Season=Season, Obs = data))
+    }
+    return(l2)
+  }
+  
+  if(type == 3){
+    l3 <- c()
+    for (i in 1:10000){
+      ssm <- SSModel(data ~ SSMtrend(1, Q=list(1)) + 
+                       SSMseasonal(12, sea.type = 'dummy', Q=i*0.01), H=1)
+      mod <- KFS(ssm)
+      Trend <- coef(mod, states = 'trend')
+      Season <- rowSums(coef(mod, states = 'seasonal'))
+      theta <- c(1,1,i*0.01)
+      l3 <- c(l3, loglikelihood(theta=theta, Trend=Trend, Season=Season, Obs = data))
+    }
+    return(l3)
+  }
+}
+
+```
+
+
+**For the likelihood curve**
+
+Here, the only difference from the function *loglikelihood_single_gs* is that we apply likelihood instead of loglikelihood defined at beginning.
+
+```{r}
+# define a 'large' function to return the loglikelihood series of one single parameter's sequence
+likelihood_single_gs <- function(data, type){
+  if(type == 1) {
+    L1 <- c()
+    for (i in 1:10000){
+      ssm <- SSModel(data ~ SSMtrend(1, Q=list(1)) + 
+                       SSMseasonal(12, sea.type = 'dummy', Q=1), H=i*0.001)
+      mod <- KFS(ssm)
+      Trend <- coef(mod, states = 'trend')
+      Season <- rowSums(coef(mod, states = 'seasonal'))
+      theta <- c(i*0.001,1,1)
+      L1 <- c(L1, likelihood(theta=theta, Trend=Trend, Season=Season, Obs = data))
+    }
+    return(L1)
+  }
+  
+  if(type == 2){
+    L2 <- c()
+    for (i in 1:10000){
+      ssm <- SSModel(data ~ SSMtrend(1, Q=list(i*0.001)) + 
+                       SSMseasonal(12, sea.type = 'dummy', Q=1), H=1)
+      mod <- KFS(ssm)
+      Trend <- coef(mod, states = 'trend')
+      Season <- rowSums(coef(mod, states = 'seasonal'))
+      theta <- c(1,i*0.001,1)
+      L2 <- c(L2, likelihood(theta=theta, Trend=Trend, Season=Season, Obs = data))
+    }
+    return(L2)
+  }
+  
+  if(type == 3){
+    L3 <- c()
+    for (i in 1:10000){
+      ssm <- SSModel(data ~ SSMtrend(1, Q=list(1)) + 
+                       SSMseasonal(12, sea.type = 'dummy', Q=i*0.001), H=1)
+      mod <- KFS(ssm)
+      Trend <- coef(mod, states = 'trend')
+      Season <- rowSums(coef(mod, states = 'seasonal'))
+      theta <- c(1,1,i*0.001)
+      L3 <- c(L3, likelihood(theta=theta, Trend=Trend, Season=Season, Obs = data))
+    }
+    return(L3)
+  }
+}
+
+```
+
+
+The loglikelihood curves: 
+
+```{r echo=FALSE}
+data("AirPassengers")
+
+output1_log <- loglikelihood_single_gs(data = log(AirPassengers), type = 1)
+
+output2_log <- loglikelihood_single_gs(data = log(AirPassengers), type = 2)
+
+output3_log <- loglikelihood_single_gs(data = log(AirPassengers), type = 3)
+```
+```{r echo=FALSE}
+plot(output1_log, type = 'l')
+
+plot(output2_log, type = 'l')
+
+plot(output3_log, type = 'l')
+
+```
+
+The likelihood curves: 
+
+```{r echo=FALSE}
+
+output1_like <- likelihood_single_gs(data = log(AirPassengers), type = 1)
+
+output2_like <- likelihood_single_gs(data = log(AirPassengers), type = 2)
+
+output3_like <- likelihood_single_gs(data = log(AirPassengers), type = 3)
+
+plot(output1_like, type = 'l')
+
+plot(output2_like, type = 'l')
+
+plot(output3_like, type = 'l')
+
+```
+
+I take a look at the first few points specially since there is a change at the beginning:
+
+```{r}
+plot(output1_log[5:500], type = 'l', 
+     main = '[5:500] points of Case Var_y', ylab = 'loglikelihood')
+
+plot(output1_like[1:100], type = 'l', 
+     main = 'first 100 points of Case Var_y', ylab = 'likelihood')
+
+```
+
+
+
+
+### MAP
+
+Because our paramters are variances, that is to say they are greater than 0, so the priors on them should be some distribution that is defined on $(0,\infty)$.
+
+**Prior**
+
+```{r}
+# if we let prior is exponential function
+prior <- function(x) exp(-x)
+```
+
+**Posterior/MAP**
+
+It is similar to the likelihood function but we times the prior:
+
+```{r}
+posterior_single_gs <- function(data, type) {
+  
+  if(type == 1){
+    map1 <- c()
+   for (i in 1:10000) {
+     ssm <- SSModel(data ~ SSMtrend(1, Q=list(1)) + 
+                      SSMseasonal(12, sea.type = 'dummy', Q = 1 ), H = i*0.001)
+     mod <- KFS(ssm)
+     Trend <- coef(mod, states = 'trend')
+     Season <- rowSums(coef(mod, states = 'seasonal'))
+     theta <- c(i*0.001,1,1)
+     map <- likelihood(theta=theta,Trend=Trend,Season=Season,Obs = data) *
+       prior(theta[type])
+     map1 <- c(map1, map)
+   } 
+    return(map1)
+  }
+  
+  if(type == 2){
+    map2 <- c()
+   for (i in 1:10000) {
+     ssm <- SSModel(data ~ SSMtrend(1, Q=list(0.01*i)) + 
+                      SSMseasonal(12, sea.type = 'dummy', Q = 1 ), H = 1)
+     mod <- KFS(ssm)
+     Trend <- coef(mod, states = 'trend')
+     Season <- rowSums(coef(mod, states = 'seasonal'))
+     theta <- c(1,i*0.01,1)
+     map <- likelihood(theta=theta,Trend=Trend,Season=Season,Obs = data) *
+       prior(theta[type])
+     map2 <- c(map2, map)
+   } 
+    return(map2) 
+  }
+  
+  if(type == 3){
+    map3 <- c()
+   for (i in 1:10000) {
+     ssm <- SSModel(data ~ SSMtrend(1, Q=list(1)) + 
+                      SSMseasonal(12, sea.type = 'dummy', Q = 0.01*i ), H = 1)
+     mod <- KFS(ssm)
+     Trend <- coef(mod, states = 'trend')
+     Season <- rowSums(coef(mod, states = 'seasonal'))
+     theta <- c(1,1,0.01*i)
+     map <- likelihood(theta=theta,Trend=Trend,Season=Season,Obs = data) *
+       prior(theta[type])
+     map3 <- c(map3, map)
+   } 
+    return(map3)
+  }
+}
+
+```
+
+Then these are the posterior curves:(still on AirPassengers)
+
+```{r echo=FALSE}
+output1_post <- posterior_single_gs(data=log(AirPassengers), type = 1) 
+
+output2_post <- posterior_single_gs(data=log(AirPassengers), type = 2) 
+
+output3_post <- posterior_single_gs(data=log(AirPassengers), type = 3) 
+```
+```{r echo=FALSE}
+
+ggplot(data.frame(output=output1_post, index = c(1:length(output1_post))),
+       aes(x=index, y=output)) + 
+  geom_line()
+
+ggplot(data.frame(output=output2_post, index = c(1:length(output2_post))),
+       aes(x=index, y=output)) + 
+  geom_line()
+
+ggplot(data.frame(output=output3_post, index = c(1:length(output3_post))),
+       aes(x=index, y=output)) + 
+  geom_line()
+```
+
+
+Let't take a look at the first 100 points of likelihood, prior and posterior curves at the same time(Fixed $\sigma_T^2, \sigma_S^2$ and $\sigma_y^2=0.001,0.002,\dots, 10$):
+<center>**Orange: likelihood  Red: prior  Blue: posterior**</center>
+```{r echo=FALSE}
+ggplot(data.frame(output1_like=output1_like[1:100],
+                  output1_prior=prior(seq(0.001,10,0.001))[1:100],
+                  output1_post=output1_post[1:100], 
+                  index=c(1:100))) +
+  geom_line(aes(y=output1_like, x=index),color='orange') + 
+  geom_line(aes(y=output1_prior, x=index), color='red') +
+  geom_line(aes(y=output1_post, x=index),color='blue') +
+  labs(title = 'test on var_y', x='Index', y='') 
+
+```
+
+**If we change the prior to a generic exponential distribution**
+
+```{r}
+prior <- function(x, lambda) lambda * exp(-lambda * x)
+```
+
+**Update the posterior**
+
+```{r echo=FALSE}
+posterior_single_gs <- function(data, type, lambda) { 
+  # lambda is the parameter in our exponential prior function
+  if(type == 1){
+    map1 <- c()
+   for (i in 1:10000) {
+     ssm <- SSModel(data ~ SSMtrend(1, Q=list(1)) + 
+                      SSMseasonal(12, sea.type = 'dummy', Q = 1 ), H = i*0.001)
+     mod <- KFS(ssm)
+     Trend <- coef(mod, states = 'trend')
+     Season <- rowSums(coef(mod, states = 'seasonal'))
+     theta <- c(i*0.001,1,1)
+     map <- likelihood(theta=theta,Trend=Trend,Season=Season,Obs = data) *
+       prior(theta[type],lambda)
+     map1 <- c(map1, map)
+   } 
+    return(map1)
+  }
+  
+  if(type == 2){
+    map2 <- c()
+   for (i in 1:10000) {
+     ssm <- SSModel(data ~ SSMtrend(1, Q=list(0.01*i)) + 
+                      SSMseasonal(12, sea.type = 'dummy', Q = 1 ), H = 1)
+     mod <- KFS(ssm)
+     Trend <- coef(mod, states = 'trend')
+     Season <- rowSums(coef(mod, states = 'seasonal'))
+     theta <- c(1,i*0.01,1)
+     map <- likelihood(theta=theta,Trend=Trend,Season=Season,Obs = data) *
+       prior(theta[type],lambda)
+     map2 <- c(map2, map)
+   } 
+    return(map2) 
+  }
+  
+  if(type == 3){
+    map3 <- c()
+   for (i in 1:10000) {
+     ssm <- SSModel(data ~ SSMtrend(1, Q=list(1)) + 
+                      SSMseasonal(12, sea.type = 'dummy', Q = 0.01*i ), H = 1)
+     mod <- KFS(ssm)
+     Trend <- coef(mod, states = 'trend')
+     Season <- rowSums(coef(mod, states = 'seasonal'))
+     theta <- c(1,1,0.01*i)
+     map <- likelihood(theta=theta,Trend=Trend,Season=Season,Obs = data) *
+       prior(theta[type],lambda)
+     map3 <- c(map3, map)
+   } 
+    return(map3)
+  }
+}
+```
+
+We let lambda = 100:
+
+```{r}
+lambda <- 100
+
+output1_post <- posterior_single_gs(data=log(AirPassengers), type = 1, lambda) 
+
+output2_post <- posterior_single_gs(data=log(AirPassengers), type = 2, lambda) 
+
+output3_post <- posterior_single_gs(data=log(AirPassengers), type = 3, lambda) 
+
+
+ggplot(data.frame(output=output1_post, index = c(1:length(output1_post))),
+       aes(x=index, y=output)) + 
+  geom_line()
+
+ggplot(data.frame(output=output2_post, index = c(1:length(output2_post))),
+       aes(x=index, y=output)) + 
+  geom_line()
+
+ggplot(data.frame(output=output3_post, index = c(1:length(output3_post))),
+       aes(x=index, y=output)) + 
+  geom_line()
+
+
+ggplot(data.frame(output1_like=output1_like[1:100],
+                  output1_prior=prior(seq(0.001,10,0.001),lambda)[1:100],
+                  output1_post=output1_post[1:100], 
+                  index=c(1:100))) +
+  geom_line(aes(y=output1_like, x=index),color='orange') + 
+  geom_line(aes(y=output1_prior, x=index), color='red') +
+  geom_line(aes(y=output1_post, x=index),color='blue') +
+  labs(title = 'test on var_y', x='Index', y='') 
+
+```
+
+# TBD

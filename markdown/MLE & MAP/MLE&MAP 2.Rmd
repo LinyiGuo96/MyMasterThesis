@@ -1,0 +1,163 @@
+---
+title: "MLE&MAP 2"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+
+I am glad to receive the datasets from Mr.Matthews, although the dataset doesn't contain the series after preprocessing. He should misunderstand my meaning of 'adjusted'. 
+
+```{r}
+rm(list = ls())
+set.seed(9483)
+```
+```{r}
+library(ggplot2)
+library(ggfortify)
+library(forecast)
+library(tseries)
+library(seasonal)
+library(KFAS)
+library(matrixStats)
+```
+```{r}
+retailtrade <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade1.csv', header = FALSE)
+retailtrade <- retailtrade[-1,] # I remove names of calsses here
+head(retailtrade)
+```
+```{r}
+# extract the sum to do analysis
+sum <- ts(as.numeric(gsub(',','',as.character(retailtrade[-1,2]))),
+          start=c(2004, 1), frequency = 12)
+sum_sa <- ts(as.numeric(gsub(',','',as.character(retailtrade[-1,3]))),
+          start=c(2004, 1), frequency = 12)
+# Note: use gsub(',', '', data) to remove the comma in our data
+```
+```{r}
+# do some basic stuff to understand our data
+autoplot(sum)
+autoplot(sum_sa)
+auto.arima(sum)
+```
+```{r}
+mod_sum_seats <- seas(sum)
+summary(mod_sum_seats)
+
+mod_sum_x11 <- seas(sum, x11='')
+summary(mod_sum_x11)
+```
+
+```{r}
+autoplot(cbind(series(mod_sum_seats,'s11'), sum_sa), ylab = '') # autoplot will plot n curves if our data have n columns, where each stands for a single time series data
+
+autoplot(cbind(series(mod_sum_x11, 'd11'), sum_sa), ylab = '')
+
+```
+```{r}
+plot(ts(rowProds(series(mod_sum_seats,c('s10','s12','s13'))), start = c(2004,1),frequency = 12),ylab='', ylim=c(2*10^7,6*10^7))
+par(new=TRUE)
+plot(series(mod_sum_seats,'b1'), col=2,ylab='', ylim=c(2*10^7,6*10^7))
+
+series(mod_sum_seats,'b1')
+```
+
+**Note:** We have a problem here... our model is multiplicative but the state-space model we used so far is addictive. Therefore, we need to do some transformation when computing.
+
+## Transformation under multiplicative cases
+
+$$Y_t = T_t*S_t*\epsilon_t$$
+
+As we can see above, if we use the result from the *seasonal* and then compute the product, it is quite close to the initial series(cause we may remove some outliers or calendar effect at the beginning). **But** if we want to apply it to formal fomular and calculate *MLE*, we need to take logarithm of it. Therefore, we have:
+$$logY_t = logT_t + logS_t + log\epsilon_t$$
+
+<center>I realize that this part is a little complex. I can't figure out this model tonight.
+
+ **TO BE CONTINUED**</center>
+_______________________________________________________________________________________
+
+## Unemployment Case
+
+```{r}
+data_em <- unemp
+
+mod_em_seats <- seas(data_em)
+
+
+em_ssm <- SSModel(data_em ~ SSMtrend(1, Q = list(1)) + 
+                        SSMseasonal(12,Q=1, sea.type = "dummy"), H=1)
+mod_em_ssm <- KFS(em_ssm)
+```
+```{r}
+# define the expression of MLE
+var_y_hat <- function(Trend, Season, Obs){
+  sum((Obs-Trend-Season)^2)/length(Obs)
+}
+
+var_T_hat <- function(Trend){
+  sum((Trend[2:length(Trend)]-Trend[1:(length(Trend)-1)])^2)/(length(Trend)-1)
+}
+
+var_S_hat <- function(Season) {
+  a = 0 
+  for(t in 12:length(Season)){
+    a = a + sum(Season[(t-11):t])^2
+  }
+  return(a/(length(Season)-11))
+}
+
+var_seasadj <- function(seats,ssm){
+  seasadj_ssm <- data_em - rowSums(coef(ssm, states = "seasonal"))
+  data <- series(seats, "s11") - seasadj_ssm
+  return(var(data))
+}
+```
+```{r}
+# this chunk is to compute the mle from seas
+season_em_seats <- series(mod_em_seats, 's10')
+trend_em_seats <- series(mod_em_seats, 's12')
+irregular_em_seats <- series(mod_em_seats, 's13')
+
+sigma1_em_seats <- var_y_hat(Trend = trend_em_seats, Season = season_em_seats, Obs = data_em)
+sigma2_em_seats <- var_T_hat(Trend = trend_em_seats)
+sigma3_em_seats <- var_S_hat(Season = season_em_seats)
+
+sigma1_em_seats
+sigma2_em_seats
+sigma3_em_seats
+```
+```{r}
+# we apply the mle to kalman filter to check the result
+em_ssm_mle <- SSModel(data_em ~ SSMtrend(1, Q=list(sigma2_em_seats)) +
+                              SSMseasonal(12, sea.type="dummy", Q=sigma3_em_seats),
+                            H = sigma1_em_seats)
+mod_em_ssm_mle <- KFS(em_ssm_mle)
+
+trend_em_ssm_mle <- coef(mod_em_ssm_mle, states = 'trend')
+season_em_ssm_mle <- rowSums(coef(mod_em_ssm_mle, states = 'seasonal'))
+
+```
+```{r}
+# trend
+plot(trend_em_seats, ylab='')
+par(new=TRUE)
+plot(trend_em_ssm_mle, ylab='', col=2)
+```
+```{r}
+# seasonal
+for(i in 1:27){
+  plot(season_em_seats[(1+(i-1)*12):(i*12)], ylab='', 
+       type='l', ylim = c(-800,800))
+  par(new=TRUE)
+  plot(season_em_ssm_mle[(1+(i-1)*12):(i*12)], ylab='', col=2,
+       type='l', ylim = c(-800,800))
+  par(new=TRUE)
+}
+legend('topright', c('seats','apply mle to K.F.'), col=c(1,2), lty=c(1,1))
+```
+
+I don't know why these two seasonal components are different. I didn't use the algorithm above, so it is not the problem of my alg. 
+
+**Comments after meeting 20191002** 我好像理解错了问题。MLE产生的结果不对是没错的，如果MLE产生的结果和TRAMO-SEATS的结果一样的话，也就不需要我来研究怎么解决这个问题了。所以如何促使从‘MLE’得到的结果类似于results from TRAMO-SEATS就是我要做的了。之所以‘MLE’加引号，是因为我们实际上要算MAP。和之前的算法类似，我们第一步还是用kalman filter计算$\{T_t\}\ \ \{S_t\}$,然后在给定某个先验分布的前提下，通过$\{T_t\}\ \ \{S_t\}$计算MAP值。
+

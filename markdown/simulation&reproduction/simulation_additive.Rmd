@@ -1,0 +1,896 @@
+---
+title: "simulation_normal cases"
+author: "Linyi Guo"
+date: "2019/11/21"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r include=FALSE}
+rm(list=ls())
+set.seed(9483)
+```
+
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+library(ggplot2)
+library(plotly)
+library(forecast)
+```
+
+I plan to simulate some datasets for my analysis.
+
+```{r}
+model <- Arima(ts(rnorm(120),freq=12), order=c(1,1,1), seasonal=c(1,1,1),
+             fixed=c(phi=0.01, theta=0.9, Phi=0.01, Theta=0.9))
+foo <- simulate(model, nsim=180)
+fit <- Arima(foo, order=c(1,1,1), seasonal=c(1,1,1))
+plot(foo)
+
+```
+
+
+```{r}
+fit
+foo <- ts(foo+5000, start=c(2000,01),frequency=12)
+plot(foo)
+
+foo_x11 <- seas(foo,x11='')
+foo_tramo <- seas(foo)
+summary(foo_x11)
+summary(foo_tramo)
+```
+```{r}
+plot(foo)
+plot(series(foo_x11, 'd10'))
+plot(series(foo_x11, 'd11'))
+plot(series(foo_x11, 'd12'))
+plot(series(foo_x11, 'd13'))
+```
+
+ok，睡了一觉好多了。好好干活吧！
+
+我现在需要的数据是：
+
+* normal cases, which means no transformation when applied to x11/tramo
+
+* length is longer
+
+* magnitude is larger
+
+I think I do need to switch my ideas about packages! 
+
+```{r}
+model1 <- Arima(ts(rnorm(120),start=c(2000,01),frequency =12), order=c(1,1,1), seasonal=c(1,1,1),
+             fixed=c(phi=0.5, theta=0.5, Phi=0.5, Theta=0.5))
+foo <- simulate(model1, nsim=180)
+fit <- Arima(foo, order=c(1,1,1), seasonal=c(1,1,1))
+plot(foo)
+```
+
+```{r}
+data1 <- ts(foo+2000, start=c(2000,01),frequency=12)
+plot(data1)
+
+data1_x11 <- seas(data1,x11='')
+data1_tramo <- seas(data1)
+summary(data1_x11)
+summary(data1_tramo)
+```
+
+```{r}
+
+plot(data1)
+plot(series(data1_x11, 'd10'))
+plot(series(data1_x11, 'd11'))
+plot(series(data1_x11, 'd12'))
+plot(series(data1_x11, 'd13'))
+```
+
+Because of the randomness we save this dataset at first.
+
+```{r}
+write.csv(data1, 'C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data1.csv')
+```
+
+
+**--------------------------------B o u n d a r y---------------------------------** 
+
+
+```{r}
+data1 <- read.csv('C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data1.csv')
+data1 <- ts(data1[,2], start = c(2000,01), frequency = 12)
+
+```
+
+
+let's see the result of ssm on this dataset:
+
+```{r}
+# loss
+Dif1 <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_irregular <- data[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+ 
+  D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+    sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+
+
+
+# exhaustion
+
+exhaustion1 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:20) {
+     for (j in 1:20) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i, j, 1)
+           
+           dif <- Dif1(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```{r}
+data1_exhaustion <- exhaustion1(data1)
+data1_exhaustion[which.min(data1_exhaustion$difference),]
+```
+
+```{r}
+data1_x11 <- seas(data1, x11='')
+
+data1_ssmm <- SSModel(data1 ~ SSMtrend(1, Q=list(2)) + 
+                        SSMseasonal(12, sea.type = 'dummy', Q=1), H=4)
+data1_ssm <- KFS(data1_ssmm)
+
+data1_ssm_trend <- coef(data1_ssm, states='trend')
+data1_ssm_seasonal <- - rowSums(coef(data1_ssm,states = 'seasonal'))
+data1_ssm_irregular <- data1[-1] - data1_ssm_trend[-1] - data1_ssm_seasonal[-length(data1)]
+
+```
+```{r}
+plot(data1_ssm_trend, ylim=c(2600,4100), ylab='')
+par(new=TRUE)
+plot(series(data1_x11,'d12'),ylim=c(2600,4100), ylab='',col=2)
+legend('topright',c('SSM','x11'),col=c(1,2),lty=1)
+
+  
+plot(data1_ssm_seasonal[-length(data1)],type='l', ylim=c(-120,150),ylab='')
+par(new=TRUE)
+plot(series(data1_x11,'d10')[-1], type='l',  ylim=c(-120,150),ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+
+plot(data1_ssm_irregular[-length(data1)], type='l',ylim=c(-30,30),ylab='')
+par(new=TRUE)
+plot(series(data1_x11,'d13')[-1], type='l',ylim=c(-30,30),ylab='', col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+```
+
+The irregular component is not very good. 
+
+Anyway let's generate more datasets:
+
+```{r}
+
+model2 <- Arima(ts(rnorm(120),start=c(2000,01),frequency =12), order=c(1,1,1), seasonal=c(1,1,1),
+             fixed=c(phi=0.3, theta=0.5, Phi=0.5, Theta=0.3))
+data2 <- simulate(model2, nsim=300)
+plot(data2[121:300],type='l')
+```
+```{r}
+data2 <- ts(data2+10000,start=c(2000,1),frequency = 12)
+
+data2 <- ts(data2[121:300]+5*c(1:180)+rnorm(180,mean=0,sd=50),start=c(2000,1),frequency = 12)
+
+
+plot(data2)
+```
+
+```{r}
+data2_x11 <- seas(data2,x11='' )
+summary(data2_x11)
+
+```
+
+```{r}
+
+data2_exhaustion <- exhaustion1(data2)
+data2_exhaustion[which.min(data2_exhaustion$difference),]
+```
+
+```{r}
+write.csv(data2, 'C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data2.csv')
+
+```
+
+
+data5: 
+
+```{r}
+
+model3 <- Arima(ts(rnorm(120),start=c(2000,01),frequency =12), order=c(1,1,1), seasonal=c(1,1,1),
+             fixed=c(phi=0.1, theta=0.8, Phi=0.9, Theta=0.5))
+data3 <- simulate(model3, nsim=300)
+plot(data3[121:300],type='l')
+
+```
+
+```{r}
+
+data3 <- ts(data3+rnorm(180,mean=0,sd=100),start=c(2000,1),frequency = 12)
+
+plot(data3)
+```
+
+```{r}
+
+data3_x11 <- seas(data3,x11='' )
+summary(data3_x11)
+```
+
+```{r}
+
+data3_exhaustion <- exhaustion1(data3)
+data3_exhaustion[which.min(data3_exhaustion$difference),]
+```
+
+```{r}
+
+data3_x11 <- seas(data3, x11='')
+
+plot(data3)
+plot(series(data3_x11, 'd10'))
+plot(series(data3_x11, 'd11'))
+plot(series(data3_x11, 'd12'))
+plot(series(data3_x11, 'd13'))
+
+
+```
+
+
+```{r}
+
+data3_ssmm <- SSModel(data3 ~ SSMtrend(1, Q=list(2)) + 
+                        SSMseasonal(12, sea.type = 'dummy', Q=1), H=5)
+data3_ssm <- KFS(data3_ssmm)
+
+data3_ssm_trend <- coef(data3_ssm, states='trend')
+data3_ssm_seasonal <- - rowSums(coef(data3_ssm,states = 'seasonal'))
+data3_ssm_irregular <- data3[-1] - data3_ssm_trend[-1] - data3_ssm_seasonal[-length(data3)]
+
+```
+```{r}
+plot(data3_ssm_trend, ylim=c(2000,45000), ylab='')
+par(new=TRUE)
+plot(series(data3_x11,'d12'),ylim=c(2000,45000), ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+  
+plot(data3_ssm_seasonal[-length(data3)],type='l',ylim=c(-2500,1500), ylab='')
+par(new=TRUE)
+plot(series(data3_x11,'d10')[-1], type='l',  ylim=c(-2500,1500),ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+
+plot(data3_ssm_irregular, type='l',ylim=c(-300,250),ylab='')
+par(new=TRUE)
+plot(series(data3_x11,'d13')[-1], type='l',ylim=c(-300,250),ylab='', col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+```
+
+```{r}
+
+write.csv(data3, 'C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data3.csv')
+
+```
+
+
+data4: 
+
+```{r}
+
+
+model4 <- Arima(ts(rnorm(120),start=c(2000,01),frequency =12), order=c(1,1,1), seasonal=c(1,1,1),
+             fixed=c(phi=0.1, theta=0.5, Phi=0.2, Theta=0.5))
+data4 <- simulate(model4, nsim=300)
+plot(data4[121:300],type='l')
+
+```
+
+```{r}
+
+data4 <- ts(data4+rnorm(180,0,20),start=c(2000,1),frequency = 12)
+
+plot(data4)
+```
+
+```{r}
+
+data4_x11 <- seas(data4,x11='' )
+summary(data4_x11)
+```
+
+```{r}
+
+data4_exhaustion <- exhaustion1(series(data4_x11,'b1'))
+data4_exhaustion[which.min(data4_exhaustion$difference),]
+```
+
+```{r}
+
+data4_x11 <- seas(data4, x11='')
+
+plot(series(data4_x11, 'b1'))
+plot(series(data4_x11, 'd10'))
+plot(series(data4_x11, 'd11'))
+plot(series(data4_x11, 'd12'))
+plot(series(data4_x11, 'd13'))
+
+
+```
+
+
+```{r}
+
+data4_ssmm <- SSModel(series(data4_x11,'b1') ~ SSMtrend(1, Q=list(3)) + 
+                        SSMseasonal(12, sea.type = 'dummy', Q=1), H=9)
+data4_ssm <- KFS(data4_ssmm)
+
+data4_ssm_trend <- coef(data4_ssm, states='trend')
+data4_ssm_seasonal <- - rowSums(coef(data4_ssm,states = 'seasonal'))
+data4_ssm_irregular <- series(data4_x11,'b1')[-1] - data4_ssm_trend[-1] - data4_ssm_seasonal[-length(data4)]
+
+```
+```{r}
+plot(data4_ssm_trend, ylim=c(700,1100), ylab='')
+par(new=TRUE)
+plot(series(data4_x11,'d12'),ylim=c(700,1100), ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+  
+plot(data4_ssm_seasonal[-length(data4)],type='l',ylim=c(-120,120), ylab='')
+par(new=TRUE)
+plot(series(data4_x11,'d10')[-1], type='l',  ylim=c(-120,120),ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+
+plot(data4_ssm_irregular, type='l',ylim=c(-100,100),ylab='')
+par(new=TRUE)
+plot(series(data4_x11,'d13')[-1], type='l',ylim=c(-100,100),ylab='', col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+```
+
+```{r}
+
+write.csv(series(data4_x11,'b1'), 'C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data4.csv')
+```
+
+
+# data5
+
+```{r}
+
+model5 <- Arima(ts(rnorm(120,sd=10),start=c(2000,01),frequency =12), order=c(1,1,1), seasonal=c(1,1,1),
+             fixed=c(phi=0.1, theta=0.1, Phi=0.1, Theta=0.1))
+data5 <- simulate(model5, nsim=300)
+plot(data5[121:300],type='l')
+
+```
+
+
+```{r}
+
+data5 <- ts(data5+rnorm(180,0,100),start=c(2000,1),frequency = 12)
+
+plot(data5)
+```
+
+```{r}
+
+data5_x11 <- seas(data5,x11='' )
+summary(data5_x11)
+```
+
+```{r}
+
+data5_exhaustion <- exhaustion1(data5)
+data5_exhaustion[which.min(data5_exhaustion$difference),]
+```
+
+```{r}
+
+
+plot(data5)
+plot(series(data5_x11, 'd10'))
+plot(series(data5_x11, 'd11'))
+plot(series(data5_x11, 'd12'))
+plot(series(data5_x11, 'd13'))
+
+
+```
+
+
+```{r}
+
+data5_ssmm <- SSModel(data5 ~ SSMtrend(1, Q=list(2)) + 
+                        SSMseasonal(12, sea.type = 'dummy', Q=1), H=7)
+data5_ssm <- KFS(data5_ssmm)
+
+data5_ssm_trend <- coef(data5_ssm, states='trend')
+data5_ssm_seasonal <- - rowSums(coef(data5_ssm,states = 'seasonal'))
+data5_ssm_irregular <- data5[-1] - data5_ssm_trend[-1] - data5_ssm_seasonal[-length(data5)]
+
+```
+```{r}
+plot(data5_ssm_trend, ylim=c(1000,6500), ylab='')
+par(new=TRUE)
+plot(series(data5_x11,'d12'),ylim=c(1000,6500), ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+  
+plot(data5_ssm_seasonal[-length(data5)],type='l',ylim=c(-650,450), ylab='')
+par(new=TRUE)
+plot(series(data5_x11,'d10')[-1], type='l',  ylim=c(-650,450),ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+
+plot(data5_ssm_irregular, type='l',ylim=c(-300,500),ylab='')
+par(new=TRUE)
+plot(series(data5_x11,'d13')[-1], type='l',ylim=c(-300,500),ylab='', col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+```
+
+
+```{r}
+
+write.csv(data5, 'C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data5.csv')
+```
+
+# data 6
+
+
+```{r}
+
+model6 <- Arima(ts(rnorm(120,sd=10),start=c(2000,01),frequency =12), order=c(1,1,1), seasonal=c(1,1,1),
+             fixed=c(phi=0.2, theta=0.2, Phi=0.2, Theta=0.2))
+data8 <- simulate(model6, nsim=300)
+plot(data8[121:300],type='l')
+
+```
+
+
+```{r}
+
+data6 <- ts(data6+rnorm(180,0,50),start=c(2000,1),frequency = 12)
+
+plot(data6)
+```
+
+```{r}
+
+data6_x11 <- seas(data6,x11='' )
+summary(data6_x11)
+```
+
+```{r}
+
+data6_exhaustion <- exhaustion1(series(data6_x11,'b1'))
+data6_exhaustion[which.min(data6_exhaustion$difference),]
+```
+
+```{r}
+
+
+plot(series(data6_x11, 'b1'))
+plot(series(data6_x11, 'd10'))
+plot(series(data6_x11, 'd11'))
+plot(series(data6_x11, 'd12'))
+plot(series(data6_x11, 'd13'))
+
+
+```
+
+
+```{r}
+
+data6_ssmm <- SSModel(series(data6_x11,'b1') ~ SSMtrend(1, Q=list(2)) + 
+                        SSMseasonal(12, sea.type = 'dummy', Q=1), H=4)
+data6_ssm <- KFS(data6_ssmm)
+
+data6_ssm_trend <- coef(data6_ssm, states='trend')
+data6_ssm_seasonal <- - rowSums(coef(data6_ssm,states = 'seasonal'))
+data6_ssm_irregular <- series(data6_x11,'b1')[-1] - data6_ssm_trend[-1] - data6_ssm_seasonal[-length(data6)]
+
+```
+```{r}
+plot(data6_ssm_trend, ylim=c(7000,13500), ylab='')
+par(new=TRUE)
+plot(series(data6_x11,'d12'),ylim=c(7000,13500), ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+  
+plot(data6_ssm_seasonal[-length(data6)],type='l',ylim=c(-350,450), ylab='')
+par(new=TRUE)
+plot(series(data6_x11,'d10')[-1], type='l',  ylim=c(-350,450),ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+
+plot(data6_ssm_irregular, type='l',ylim=c(-150,150),ylab='')
+par(new=TRUE)
+plot(series(data6_x11,'d13')[-1], type='l',ylim=c(-150,150),ylab='', col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+```
+
+
+```{r}
+
+write.csv(series(data6_x11,'b1'), 'C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data6.csv')
+```
+
+# data 7
+
+
+
+```{r}
+
+model7 <- Arima(ts(rnorm(120,sd=10),start=c(2000,01),frequency =12), order=c(1,1,1), seasonal=c(1,1,1),
+             fixed=c(phi=0.3, theta=0.3, Phi=0.3, Theta=0.3))
+data7 <- simulate(model7, nsim=300)
+plot(data7[121:300],type='l')
+
+```
+
+
+```{r}
+
+data7 <- ts(data7[121:300],start=c(2000,1),frequency = 12)
+
+plot(data7)
+```
+
+```{r}
+
+data7_x11 <- seas(data7,x11='' )
+summary(data7_x11)
+```
+
+```{r}
+
+data7_exhaustion <- exhaustion1(data7)
+data7_exhaustion[which.min(data7_exhaustion$difference),]
+```
+
+```{r}
+
+
+plot(data7_x11)
+plot(series(data7_x11, 'd10'))
+plot(series(data7_x11, 'd11'))
+plot(series(data7_x11, 'd12'))
+plot(series(data7_x11, 'd13'))
+
+
+```
+
+
+```{r}
+
+data7_ssmm <- SSModel(data7 ~ SSMtrend(1, Q=list(2)) + 
+                        SSMseasonal(12, sea.type = 'dummy', Q=1), H=8)
+data7_ssm <- KFS(data7_ssmm)
+
+data7_ssm_trend <- coef(data7_ssm, states='trend')
+data7_ssm_seasonal <- - rowSums(coef(data7_ssm,states = 'seasonal'))
+data7_ssm_irregular <- data7[-1] - data7_ssm_trend[-1] - data7_ssm_seasonal[-length(data7)]
+
+```
+```{r}
+plot(data7_ssm_trend, ylim=c(1500,5500), ylab='')
+par(new=TRUE)
+plot(series(data7_x11,'d12'),ylim=c(1500,5500), ylab='',col=2)
+legend('topright',c('SSM','x11'),col=c(1,2),lty=1)
+
+  
+plot(data7_ssm_seasonal[-length(data7)],type='l',ylim=c(-1000,600), ylab='')
+par(new=TRUE)
+plot(series(data7_x11,'d10')[-1], type='l',  ylim=c(-1000,600),ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+
+plot(data7_ssm_irregular, type='l',ylim=c(-300,300),ylab='')
+par(new=TRUE)
+plot(series(data7_x11,'d13')[-1], type='l',ylim=c(-300,300),ylab='', col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+```
+
+
+```{r}
+
+write.csv(data7, 'C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data7.csv')
+```
+
+
+<center>*随便写点最近的感想：现在，科研在我眼中似乎没有之前那样遥不可及，也不再像之前一样虚无缥缈。我之前对其的确过于夸大了。不过，如果拿打怪升级来讲，我目前也就是打打野外的小野怪，混经验罢了。还没有接触到任何程度的boss。如果没有经验等级，我碰见了boss也没办法。甚至，我根本看不到boss的存在。就像有些副本必须要等级限定一样。这么比喻科研似乎很有趣。问题嘛，很多很多。同一个问题在做的时候也会遇到其他棘手的连带问题，所以不忘初心很重要。做的东西应该是为了问题本身服务的，如果不是这样，那就可以暂且搁置一旁。等目前的问题解决了再回头看之前忽略的问题。因为你不知道这个被忽略的问题背后隐藏了什么，也许又是一个大的topic也说不定。*
+
+**Anyway, remember what your goal is at every stage and then go forward to it.**</center>
+
+# data8
+
+
+```{r}
+
+model8 <- Arima(ts(rnorm(120,sd=10),start=c(2000,01),frequency =12), order=c(1,1,1), seasonal=c(1,1,1),
+             fixed=c(phi=0.2, theta=0.1, Phi=0.1, Theta=0.3))
+data8 <- simulate(model8, nsim=300)
+plot(data8[121:300],type='l')
+
+```
+
+
+```{r}
+
+data8 <- ts(data8+rnorm(180,500,50),start=c(2000,1),frequency = 12)
+
+plot(data8)
+```
+
+```{r}
+
+data8_x11 <- seas(data8,x11='' )
+summary(data8_x11)
+```
+
+```{r}
+
+data8_exhaustion <- exhaustion1(data8)
+data8_exhaustion[which.min(data8_exhaustion$difference),]
+```
+
+```{r}
+
+
+plot(data8_x11)
+plot(series(data8_x11, 'd10'))
+plot(series(data8_x11, 'd11'))
+plot(series(data8_x11, 'd12'))
+plot(series(data8_x11, 'd13'))
+
+
+```
+
+
+```{r}
+
+data8_ssmm <- SSModel(data8 ~ SSMtrend(1, Q=list(4)) + 
+                        SSMseasonal(12, sea.type = 'dummy', Q=1), H=10)
+data8_ssm <- KFS(data8_ssmm)
+
+data8_ssm_trend <- coef(data8_ssm, states='trend')
+data8_ssm_seasonal <- - rowSums(coef(data8_ssm,states = 'seasonal'))
+data8_ssm_irregular <- data8[-1] - data8_ssm_trend[-1] - data8_ssm_seasonal[-length(data8)]
+
+```
+```{r}
+plot(data8_ssm_trend, ylim=c(5500,12500), ylab='')
+par(new=TRUE)
+plot(series(data8_x11,'d12'),ylim=c(5500,12500), ylab='',col=2)
+legend('topright',c('SSM','x11'),col=c(1,2),lty=1)
+
+  
+plot(data8_ssm_seasonal[-length(data8)],type='l',ylim=c(-500,400), ylab='')
+par(new=TRUE)
+plot(series(data8_x11,'d10')[-1], type='l',  ylim=c(-500,400),ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+
+plot(data8_ssm_irregular, type='l',ylim=c(-200,200),ylab='')
+par(new=TRUE)
+plot(series(data8_x11,'d13')[-1], type='l',ylim=c(-200,200),ylab='', col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+```
+
+
+```{r}
+
+write.csv(data8, 'C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data8.csv')
+```
+
+
+
+# data 9
+
+
+```{r}
+
+model9 <- Arima(ts(rnorm(120),start=c(2000,01),frequency =12), order=c(1,1,1), seasonal=c(1,1,1),
+             fixed=c(phi=runif(1), theta=runif(1), Phi=runif(1), Theta=runif(1)))
+data9 <- simulate(model9, nsim=300)
+plot(data9[121:300],type='l')
+
+```
+
+
+```{r}
+
+data9 <- ts(-data9[121:300],start=c(2000,1),frequency = 12)
+
+plot(data9)
+```
+
+```{r}
+
+data9_x11 <- seas(data9,x11='' )
+summary(data9_x11)
+```
+
+```{r}
+
+data9_exhaustion <- exhaustion1(data9)
+data9_exhaustion[which.min(data9_exhaustion$difference),]
+```
+
+```{r}
+
+
+plot(data9_x11)
+plot(series(data9_x11, 'd10'))
+plot(series(data9_x11, 'd11'))
+plot(series(data9_x11, 'd12'))
+plot(series(data9_x11, 'd13'))
+
+
+```
+
+
+```{r}
+
+data9_ssmm <- SSModel(data9 ~ SSMtrend(1, Q=list(5)) + 
+                        SSMseasonal(12, sea.type = 'dummy', Q=1), H=6)
+data9_ssm <- KFS(data9_ssmm)
+
+data9_ssm_trend <- coef(data9_ssm, states='trend')
+data9_ssm_seasonal <- - rowSums(coef(data9_ssm,states = 'seasonal'))
+data9_ssm_irregular <- data9[-1] - data9_ssm_trend[-1] - data9_ssm_seasonal[-length(data9)]
+
+```
+```{r}
+plot(data9_ssm_trend, ylim=c(2500,7000), ylab='')
+par(new=TRUE)
+plot(series(data9_x11,'d12'),ylim=c(2500,7000), ylab='',col=2)
+legend('topright',c('SSM','x11'),col=c(1,2),lty=1)
+
+  
+plot(data9_ssm_seasonal[-length(data9)],type='l',ylim=c(-250,250), ylab='')
+par(new=TRUE)
+plot(series(data9_x11,'d10')[-1], type='l',  ylim=c(-250,250),ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1,cex=0.6)
+
+
+plot(data9_ssm_irregular, type='l',ylim=c(-30,40),ylab='')
+par(new=TRUE)
+plot(series(data9_x11,'d13')[-1], type='l',ylim=c(-30,40),ylab='', col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+```
+
+
+```{r}
+
+write.csv(data9, 'C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data9.csv')
+```
+
+
+# data0
+
+
+```{r}
+
+model0 <- Arima(ts(rnorm(120),start=c(2000,01),frequency =12), order=c(1,1,1), seasonal=c(1,1,1),
+             fixed=c(phi=runif(1), theta=runif(1), Phi=runif(1), Theta=runif(1)))
+data0 <- simulate(model0, nsim=300)
+plot(data0[121:300],type='l')
+
+```
+
+
+```{r}
+
+data0 <- ts(data0+c(1:180)*10,start=c(2000,1),frequency = 12)
+
+plot(data0)
+```
+
+```{r}
+
+data0_x11 <- seas(data0,x11='' )
+summary(data0_x11)
+```
+
+```{r}
+
+data0_exhaustion <- exhaustion1(series(data0_x11,'b1'))
+data0_exhaustion[which.min(data0_exhaustion$difference),]
+```
+
+```{r}
+
+
+plot(data0_x11)
+plot(series(data0_x11, 'd10'))
+plot(series(data0_x11, 'd11'))
+plot(series(data0_x11, 'd12'))
+plot(series(data0_x11, 'd13'))
+
+
+```
+
+
+```{r}
+
+data0_ssmm <- SSModel(data0 ~ SSMtrend(1, Q=list(2)) + 
+                        SSMseasonal(12, sea.type = 'dummy', Q=1), H=7)
+data0_ssm <- KFS(data0_ssmm)
+
+data0_ssm_trend <- coef(data0_ssm, states='trend')
+data0_ssm_seasonal <- - rowSums(coef(data0_ssm,states = 'seasonal'))
+data0_ssm_irregular <- data0[-1] - data0_ssm_trend[-1] - data0_ssm_seasonal[-length(data0)]
+
+```
+```{r}
+plot(data0_ssm_trend, ylim=c(1500,8000), ylab='')
+par(new=TRUE)
+plot(series(data0_x11,'d12'),ylim=c(1500,8000), ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1)
+
+  
+plot(data0_ssm_seasonal[-length(data0)],type='l',ylim=c(-700,700), ylab='')
+par(new=TRUE)
+plot(series(data0_x11,'d10')[-1], type='l',  ylim=c(-700,700),ylab='',col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1,cex=0.6)
+
+
+plot(data0_ssm_irregular, type='l',ylim=c(-350,300),ylab='')
+par(new=TRUE)
+plot(series(data0_x11,'d13')[-1], type='l',ylim=c(-350,300),ylab='', col=2)
+legend('topleft',c('SSM','x11'),col=c(1,2),lty=1,cex=0.6)
+```
+
+
+```{r}
+
+write.csv(data0, 'C:\\Users\\GuoLY\\Desktop\\markdown\\simulation&reproduction\\data\\data0.csv')
+```
+
+
+
+

@@ -1,0 +1,1256 @@
+---
+title: "Posterior"
+author: "Linyi Guo"
+date: "2019/11/6"
+output: 
+  html_document:
+    toc: true
+  pdf_document:
+    toc: true
+---
+
+```{r include=FALSE}
+rm(list=ls())
+set.seed(9483)
+```
+
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+library(ggplot2)
+library(plotly)
+```
+
+Well, time to program now. Maybe let me finish my lunch at first :)
+
+# Introduction
+
+We will use the data from statcan this time and also use 10 different datasets perhaps. These datasets are denoted as data1, data2, ...
+
+```{r include=FALSE}
+Data1 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\total.csv')
+Data2 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\automobile.csv')
+Data3 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Automotive parts.csv')
+Data4 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Clothing stores.csv')
+Data5 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\furnishings.csv')
+Data6 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Beer, wine and liquor stores.csv')
+Data7 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Grocery stores.csv')
+Data8 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Health and personal care stores.csv')
+Data9 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\motor.csv')
+Data10 <- read.csv('C:\\Users\\GuoLY\\Desktop\\StatCan\\retailtrade data\\Sporting goods, hobby, book and music stores.csv')
+```
+
+```{r echo=FALSE}
+data1 <- ts(Data1[,1], start=c(2004,01), frequency=12)
+data2 <- ts(Data2[,1], start=c(2004,01), frequency=12)
+data3 <- ts(Data3[,1], start=c(2004,01), frequency=12)
+data4 <- ts(Data4[,1], start=c(2004,01), frequency=12)
+data5 <- ts(Data5[,1], start=c(2004,01), frequency=12)
+data6 <- ts(Data6[,1], start=c(2004,01), frequency=12)
+data7 <- ts(Data7[,1], start=c(2004,01), frequency=12)
+data8 <- ts(Data8[,1], start=c(2004,01), frequency=12)
+data9 <- ts(Data9[,1], start=c(2004,01), frequency=12)
+data10 <- ts(Data10[,1], start=c(2004,01), frequency=12)
+```
+
+# X11 models & Results
+
+The models of data5 and data7 need to take log. Let's see the decomposition of these 10 datasets by x11.
+
+```{r include=FALSE}
+data1_x11 <- seas(data1, x11='')
+data2_x11 <- seas(data2, x11='')
+data3_x11 <- seas(data3, x11='')
+data4_x11 <- seas(data4, x11='')
+data5_x11 <- seas(data5, x11='')
+data6_x11 <- seas(data6, x11='')
+data7_x11 <- seas(data7, x11='')
+data8_x11 <- seas(data8, x11='')
+data9_x11 <- seas(data9, x11='')
+data10_x11 <- seas(data10, x11='')
+```
+
+```{r echo=FALSE}
+par(mfrow=c(2,2))
+plot(data1)
+plot(series(data1_x11, 'd11'))
+plot(series(data1_x11, 'd12'))
+plot(series(data1_x11, 'd10'))
+
+plot(data2)
+plot(series(data2_x11, 'd11'))
+plot(series(data2_x11, 'd12'))
+plot(series(data2_x11, 'd10'))
+
+plot(data3)
+plot(series(data3_x11, 'd11'))
+plot(series(data3_x11, 'd12'))
+plot(series(data3_x11, 'd10'))
+
+plot(data4)
+plot(series(data4_x11, 'd11'))
+plot(series(data4_x11, 'd12'))
+plot(series(data4_x11, 'd10'))
+
+plot(data5)
+plot(series(data5_x11, 'd11'))
+plot(series(data5_x11, 'd12'))
+plot(series(data5_x11, 'd10'))
+
+plot(data6)
+plot(series(data6_x11, 'd11'))
+plot(series(data6_x11, 'd12'))
+plot(series(data6_x11, 'd10'))
+
+plot(data7)
+plot(series(data7_x11, 'd11'))
+plot(series(data7_x11, 'd12'))
+plot(series(data7_x11, 'd10'))
+
+plot(data8)
+plot(series(data8_x11, 'd11'))
+plot(series(data8_x11, 'd12'))
+plot(series(data8_x11, 'd10'))
+
+plot(data9)
+plot(series(data9_x11, 'd11'))
+plot(series(data9_x11, 'd12'))
+plot(series(data9_x11, 'd10'))
+
+plot(data10)
+plot(series(data10_x11, 'd11'))
+plot(series(data10_x11, 'd12'))
+plot(series(data10_x11, 'd10'))
+par(mfrow=c(1,1))
+```
+
+
+```{r}
+data1_ssmm <- SSModel(log(data1) ~ SSMtrend(1, Q=list(1)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = 1)
+data1_ssm <- KFS(data1_ssmm)
+
+
+data1_ssm_trend <- coef(data1_ssm, states = 'trend')
+data1_ssm_seasonal <- -rowSums(coef(data1_ssm, states='seasonal'))
+data1_ssm_irregular <- data1[-1] - data1_ssm_trend[-1] - data1_ssm_seasonal[-length(data1)]
+
+
+par(mfrow=c(2,2))
+plot(data1)
+plot(series(data1_x11, 'd11'))
+plot(series(data1_x11, 'd12'))
+plot(series(data1_x11, 'd10'))
+
+
+
+
+par(mfrow=c(2,1))
+plot(series(data1_x11, 'd10'))
+
+plot(exp(data1_ssm_seasonal),type='l')
+par(mfrow=c(1,1))
+
+```
+
+# loss function
+
+$$Loss=\frac{\sum(X11_{irregular}-SSM_{irregular})^2}{\sigma_I^2} + \frac{\sum(X11_{trend}-SSM_{trend})^2}{\sigma_T^2} + \frac{\sum(X11_{seasonal}-SSM_{seasonal})^2}{\sigma_S^2}$$
+
+```{r}
+# Dif1 is for normal cases, where we don't need to take log
+Dif1 <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_irregular <- data[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+ 
+  D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+    sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+
+# if we need to transform(take log) the original data, use Dif2
+Dif2 <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- exp(coef(ssm, states = 'trend'))
+  ssm_seasonal <- exp(-rowSums(coef(ssm, states='seasonal')))
+  ssm_irregular <- data[-1]/(ssm_trend[-1]*ssm_seasonal[-length(data)])
+ 
+  D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+    sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+```
+
+# logLikelihood 
+
+Because of the seasonal component, we can't compute the likelihood of first 11 points:
+$$logLikelihood = -\frac{n-11}{2}log(\sigma_y^2)-\frac{n-11}{2}log(\sigma_T^2)-\frac{n-11}{2}log(\sigma_S^2)-\frac{\sum_{i=12}^{n}(y_i-T_i-S_i)^2}{2\sigma_y^2}-\frac{\sum_{i=12}^{n}(T_i-T_{i-1})^2}{2\sigma_T^2}-\frac{\sum_{i=12}^{n}(\sum_{j=0}^{11}S_{i-j})^2}{2\sigma_S^2}$$
+
+**Note: **in our problem we will set $\sigma_S^2=1$.
+
+```{r}
+loglikelihood <- function(data, trend, season, sigma){
+  
+  n <- length(data)
+  a <- 0
+  for (i in 12:n)  a <- a + (sum(season[(i-11):i]))^2
+  l <- -(n-11)/2 * log(sigma[1]) - 
+    (n-11)/2 * log(sigma[2]) - (n-11)/2 * log(sigma[3]) -
+    sum((data[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/(2*sigma[1]) - 
+    sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/(2*sigma[2]) - 
+    a / (2*sigma[3])
+  return(l)
+  
+}
+```
+
+
+# logPrior
+
+We will use imporper priors at first(we will fix this in the future).
+
+## Prior 1: exponential
+
+If our prior is exponential, suppose: 
+$$Prior(\sigma_y^2) = exp(-c1*\sigma_y^2)$$
+$$Prior(\sigma_T^2) = exp(-c2*\sigma_T^2)$$
+then,
+$$logPrior(\sigma_y^2)= -c1*\sigma_y^2$$
+$$logPrior(\sigma_T^2)= -c2*\sigma_T^2$$
+
+Since both variances are independent, our prior is the product of them, thus our logprior is the sum of them:
+$$logPrior=-c1*\sigma_y^2-c2*\sigma_T^2$$
+
+```{r}
+logprior1 <- function(sigma,c1,c2){
+  return(-c1*sigma[1]- c2*sigma[2])
+}
+```
+
+# MAP
+
+Based on the functions defined above, given c1 and c2, our maximum a posteriori estimate is defined as:
+$$MAP=\underset{\sigma_y^2, \sigma_T^2}{\arg\max}(logLikelihood+logPrior)$$
+
+We will set the domain of our variance is integers 1:50:
+
+```{r}
+logposterior_matrix <- function(data, c1, c2){
+  LP <- c()
+  index <- c()
+   for (i in 1:100) {
+     for (j in 1:100) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i, j, 1)
+         
+         lp <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma) + logprior1(sigma, c1, c2)
+         LP <- c(LP, lp)
+         index <- rbind(index, sigma)
+         
+      }
+   }
+  df <- data.frame(variance=index, logposterior=LP)
+  return(df)
+}
+```
+
+```{r}
+data5_postmatrix <- logposterior_matrix(data5, 10^6, 10^6)
+data5_postmatrix[which.max(data5_postmatrix$logposterior),]
+```
+
+
+
+```{r}
+logposterior_matrix <- function(data, c1, c2){
+  LP <- c()
+  index <- c()
+   for (i in 1:100) {
+     for (j in 1:100) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j*.1)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i*.1)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i*.1, j*.1, 1)
+         
+         lp <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma) + logprior1(sigma, c1, c2)
+         LP <- c(LP, lp)
+         index <- rbind(index, sigma)
+         
+      }
+   }
+  df <- data.frame(variance=index, logposterior=LP)
+  return(df)
+}
+```
+
+```{r}
+data1_postmatrix <- logposterior_matrix(log(data1), 1,1)
+data1_postmatrix[which.max(data1_postmatrix$logposterior),]
+```
+
+**PROBLEM!** for dataset *unemp*, we noticed that the loglikelihood and logposteriori are maximized when the variance takes the greatest value but now it is completely opposite! As for the reason, it is from the log-transformation here. By taking log, our data becomes much smaller, which makes the components much smaller at the same time. According to the defination of log likelihood, it is reasonable that the smaller our variances are, the larger our loglikelihood will be.
+
+Therefore, our loglikelihood surface is different in both cases.
+
+I want to try the exhaustion part before continuing with the log problem.
+
+# Exhaustion
+
+```{r}
+# define the exhaustion function for normal(addictive) cases
+
+exhaustion1 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:50) {
+     for (j in 1:50) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i, j, 1)
+           
+           dif <- Dif1(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```{r}
+# exhaustion function for multiplicative cases
+
+exhaustion2 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:50) {
+     for (j in 1:50) {
+         
+           ssmm <- SSModel(log(data) ~ SSMtrend(1, Q=list(j*0.02)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i*0.02)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i*0.02, j*0.02, 1)
+           
+           dif <- Dif2(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+
+
+<center>**Do a little summary here2019.11.13. 1:33 am**</center>
+
+嗯,直接用汉字吧,就当是写个小日志了.Research的东西拖到了周二才算是真正开始做吧,然后发现做不完.这次是实在做不完,只有给Aaron发邮件申请delay,虽然这不是我的本意.因为想着之前也看了看,今天整理一下思路就可以码code了,然并卵.以后还是要把各种事情往前提啊兄弟.总结一下遇到的问题吧:
+
+1. 最大的问题就是关于transform的问题.之前用unemp,我们的loglikelihood和variances的关系(一个曲面)和这些需要take log的,相差很大,因此在定义prior的时候差别就很大;
+
+2. 对需要take log的情况,我试了exhaustion但是结果和我想象的也不是很一样,而且结果也不好,difference是infinity的.这一点需要好好想想,因为今晚的时间关系我可能有哪些地方有错误;
+
+3. 目前来看,主要问题就是对那些需要take log的数据怎么处理.所以换个思路,我可以先只关注那些不需要take log的,这样的话我之前的想法应该就都可以用了.
+
+blablabla...任重而道远,keep moving!
+
+
+
+OK, F**K. My state is so bad. It seems that I think this prolem is too easy at first. Just be patient, please. This is research! You need to do it step by step! OK? Keep working, figure out the small problem one by one and then you will achieve the purpose! OK?
+
+```{r}
+
+data1_exhaustion <- exhaustion2(data1)
+data1_exhaustion[which.min(data1_exhaustion$difference),]
+
+data2_exhaustion <- exhaustion2(data2)
+data2_exhaustion[which.min(data2_exhaustion$difference),]
+
+data3_exhaustion <- exhaustion2(data3)
+data3_exhaustion[which.min(data3_exhaustion$difference),]
+
+data4_exhaustion <- exhaustion2(data4)
+data4_exhaustion[which.min(data4_exhaustion$difference),]
+
+data5_exhaustion <- exhaustion1(data5)
+data5_exhaustion[which.min(data5_exhaustion$difference),]
+
+data6_exhaustion <- exhaustion2(data6)
+data6_exhaustion[which.min(data6_exhaustion$difference),]
+
+data7_exhaustion <- exhaustion1(data7)
+data7_exhaustion[which.min(data7_exhaustion$difference),]
+
+data8_exhaustion <- exhaustion2(data8)
+data8_exhaustion[which.min(data8_exhaustion$difference),]
+
+data9_exhaustion <- exhaustion2(data9)
+data9_exhaustion[which.min(data9_exhaustion$difference),]
+
+data10_exhaustion <- exhaustion2(data10)
+data10_exhaustion[which.min(data10_exhaustion$difference),]
+
+```
+
+Based on the above results, we will find that for the normal cases(data5&7), expecially data7, the 'best' fit is the maximum of our upper limit of variances(c(23,10,1) for data5); for the cases where we need to take log, the 'best' fit is the minimum of our lower limit. **Recall:** the 'best' fit of *unemp* is c(7,5,1).
+
+The REASON for the former case is the data 7 is too large so based on our loss function definition, to some extent the choice of variances itself plays an important role in our loss.
+
+**我认为Aaron建议的loss function是不合适的！**
+
+For data7, the loss is 4.1996*10^11 for c(50,50,1); 3.7595 for c(100,100,1). This result reflects that the difference of components is larger when changing c(50,50,1) to c(100,100,1) cause the ratior is not 2:1.
+
+
+看看两种情况下的差别大不大：
+
+```{r echo=FALSE}
+data7_ssmm50 <- SSModel(data7 ~ SSMtrend(1, Q=list(50)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 50)
+data7_ssm50 <- KFS(data7_ssmm50)
+
+data7_ssmm100 <- SSModel(data7 ~ SSMtrend(1, Q=list(100)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 100)
+data7_ssm100 <- KFS(data7_ssmm100)
+
+
+data7_ssm50_trend <- coef(data7_ssm50, states = 'trend')
+data7_ssm50_seasonal <- -rowSums(coef(data7_ssm50, states='seasonal'))
+data7_ssm50_irregular <- data7[-1] - data7_ssm50_trend[-1] - data7_ssm50_seasonal[-length(data7)]
+
+data7_ssm100_trend <- coef(data7_ssm100, states = 'trend')
+data7_ssm100_seasonal <- -rowSums(coef(data7_ssm100, states='seasonal'))
+data7_ssm100_irregular <- data7[-1] - data7_ssm100_trend[-1] - data7_ssm100_seasonal[-length(data7)]
+
+
+
+plot(data7_ssm100_trend,ylim=c(5*10^6,8*10^6))
+par(new=TRUE)
+plot(data7_ssm50_trend,ylim=c(5*10^6,8*10^6),col=2)
+par(new=TRUE)
+plot(series(data7_x11, 'd12'),ylim=c(5*10^6,8*10^6),col=3)
+title('trend')
+
+plot(data7_ssm100_seasonal,type='l',ylim=c(-8*10^5, 5*10^5))
+par(new=TRUE)
+plot(data7_ssm50_seasonal,type='l',ylim=c(-8*10^5, 5*10^5),col=2)
+title('seasonal')
+
+plot(data7_ssm100_irregular,type='l',ylim=c(-8*10^5, 10^6))
+par(new=TRUE)
+plot(data7_ssm50_irregular,type='l',ylim=c(-8*10^5, 10^6),col=2)
+title('irregular')
+
+```
+
+OK these pictures draw me crazy now!!!!! WTF? 50501 and 1001001 give me basically the same results. Are you kidding me? 我猜是因为这个方差太大了，另外加上5050 100100 比例都是11，所以结果一样？那么221和441应该结果不一样吧。因为他们都比较小。
+
+另外一个问题：这个trend不对啊！！！怎么就这么多褶子了！！！我要的平滑呢？？？这和tramo的结果出入也太大了！！！
+
+卒。
+
+下面的是221 441的结果：
+
+```{r}
+
+data7_ssmm2 <- SSModel(data7 ~ SSMtrend(1, Q=list(2)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 2)
+data7_ssm2 <- KFS(data7_ssmm2)
+
+data7_ssmm4 <- SSModel(data7 ~ SSMtrend(1, Q=list(4)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 4)
+data7_ssm4 <- KFS(data7_ssmm4)
+
+
+data7_ssm2_trend <- coef(data7_ssm2, states = 'trend')
+data7_ssm2_seasonal <- -rowSums(coef(data7_ssm2, states='seasonal'))
+data7_ssm2_irregular <- data7[-1] - data7_ssm2_trend[-1] - data7_ssm2_seasonal[-length(data7)]
+
+data7_ssm4_trend <- coef(data7_ssm4, states = 'trend')
+data7_ssm4_seasonal <- -rowSums(coef(data7_ssm4, states='seasonal'))
+data7_ssm4_irregular <- data7[-1] - data7_ssm4_trend[-1] - data7_ssm4_seasonal[-length(data7)]
+
+
+
+plot(data7_ssm4_trend,ylim=c(5*10^6,8*10^6))
+par(new=TRUE)
+plot(data7_ssm2_trend,ylim=c(5*10^6,8*10^6),col=2)
+par(new=TRUE)
+plot(series(data7_x11, 'd12'),ylim=c(5*10^6,8*10^6),col=3)
+title('trend')
+
+plot(data7_ssm4_seasonal,type='l',ylim=c(-8*10^5, 5*10^5))
+par(new=TRUE)
+plot(data7_ssm2_seasonal,type='l',ylim=c(-8*10^5, 5*10^5),col=2)
+title('seasonal')
+
+plot(data7_ssm4_irregular,type='l',ylim=c(-8*10^5, 10^6))
+par(new=TRUE)
+plot(data7_ssm2_irregular,type='l',ylim=c(-8*10^5, 10^6),col=2)
+title('irregular')
+
+```
+
+这个是为了看看trend能不能平滑一点：
+
+```{r}
+
+data7_ssmm1 <- SSModel(series(data7_x11,'b1') ~ SSMtrend(1, Q=list(0.3)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 1)
+data7_ssm1 <- KFS(data7_ssmm1)
+
+
+data7_ssm1_trend <- coef(data7_ssm1, states = 'trend')
+data7_ssm1_seasonal <- -rowSums(coef(data7_ssm1, states='seasonal'))
+data7_ssm1_irregular <- data7[-1] - data7_ssm1_trend[-1] - data7_ssm1_seasonal[-length(data7)]
+
+
+plot(data7_ssm1_trend,ylim=c(5*10^6,8*10^6),ylab='')
+par(new=TRUE)
+plot(series(data7_x11, 'd12'),ylim=c(5*10^6,8*10^6),ylab='',col=3)
+title('trend')
+```
+
+After using the preprocessing argument 'b1', our results look better!!!!! which is good !!!
+
+let's see whether the same thing could happen on 50501 and 1001001.(**Notice: we will cover the model we defined before!**)
+
+```{r}
+data7_ssmm50 <- SSModel(series(data7_x11,'b1') ~ SSMtrend(1, Q=list(50)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 50)
+data7_ssm50 <- KFS(data7_ssmm50)
+
+data7_ssmm100 <- SSModel(series(data7_x11,'b1') ~ SSMtrend(1, Q=list(100)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 100)
+data7_ssm100 <- KFS(data7_ssmm100)
+
+
+data7_ssm50_trend <- coef(data7_ssm50, states = 'trend')
+data7_ssm50_seasonal <- -rowSums(coef(data7_ssm50, states='seasonal'))
+data7_ssm50_irregular <- series(data7_x11,'b1') - data7_ssm50_trend[-1] - data7_ssm50_seasonal[-length(data7)]
+
+data7_ssm100_trend <- coef(data7_ssm100, states = 'trend')
+data7_ssm100_seasonal <- -rowSums(coef(data7_ssm100, states='seasonal'))
+data7_ssm100_irregular <- series(data7_x11,'b1') - data7_ssm100_trend[-1] - data7_ssm100_seasonal[-length(data7)]
+
+
+
+plot(data7_ssm100_trend,ylim=c(5*10^6,8*10^6))
+par(new=TRUE)
+plot(data7_ssm50_trend,ylim=c(5*10^6,8*10^6),col=2)
+par(new=TRUE)
+plot(series(data7_x11, 'd12'),ylim=c(5*10^6,8*10^6),col=3)
+title('trend')
+
+plot(data7_ssm100_seasonal,type='l',ylim=c(-8*10^5, 5*10^5))
+par(new=TRUE)
+plot(data7_ssm50_seasonal,type='l',ylim=c(-8*10^5, 5*10^5),col=2)
+title('seasonal')
+
+plot(data7_ssm100_irregular,type='l',ylim=c(-8*10^5, 10^6))
+par(new=TRUE)
+plot(data7_ssm50_irregular,type='l',ylim=c(-8*10^5, 10^6),col=2)
+title('irregular')
+
+```
+
+This looks better but absolutely is still not what I want. The trend is quite different from that from tramo-seats.
+
+Remember our final goal is to come up with a good loss function!!!!!(**Update: this loss function seems to be sensible later**)
+
+Obviously, the result from 1, 0.3, 1(0.3 is chosen randomly) is much better than those from 50501 and 1001001.
+
+Let's see the exhaustion result of the preprocessing data:
+
+```{r}
+
+data5_exhaustion <- exhaustion1(series(data5_x11, 'b1'))
+data5_exhaustion[which.min(data5_exhaustion$difference),]
+
+data7_exhaustion <- exhaustion1(series(data7_x11,'b1'))
+data7_exhaustion[which.min(data7_exhaustion$difference),]
+```
+
+- - ... well, when I use the preprocessed data, the result seems to be good then, which is what I want to see but also don't want to see.
+
+Let's see the visualization results from them:
+
+```{r}
+data5_ssmmexhaustion <- SSModel(series(data5_x11,'b1') ~ SSMtrend(1, Q=list(3)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 9)
+data5_ssmexhaustion <- KFS(data5_ssmmexhaustion)
+
+
+data7_ssmmexhaustion <- SSModel(series(data7_x11,'b1') ~ SSMtrend(1, Q=list(3)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 10)
+data7_ssmexhaustion <- KFS(data7_ssmmexhaustion)
+
+
+data5_ssmexhaustion_trend <- coef(data5_ssmexhaustion, states = 'trend')
+data5_ssmexhaustion_seasonal <- -rowSums(coef(data5_ssmexhaustion, states='seasonal'))
+data5_ssmexhaustion_irregular <- series(data5_x11,'b1') - data5_ssmexhaustion_trend[-1] - data5_ssmexhaustion_seasonal[-length(data5)]
+
+data7_ssmexhaustion_trend <- coef(data7_ssmexhaustion, states = 'trend')
+data7_ssmexhaustion_seasonal <- -rowSums(coef(data7_ssmexhaustion, states='seasonal'))
+data7_ssmexhaustion_irregular <- series(data7_x11,'b1') - data7_ssmexhaustion_trend[-1] - data7_ssmexhaustion_seasonal[-length(data5)]
+
+
+plot(data5_ssmexhaustion_trend,ylim=c(2.5*10^5, 6*10^5),ylab='')
+par(new=TRUE)
+plot(series(data5_x11, 'd12'),ylim=c(2.5*10^5, 6*10^5),ylab='',col=3)
+title('trend')
+
+plot(data7_ssmexhaustion_trend,ylim=c(5*10^6,8*10^6),ylab='')
+par(new=TRUE)
+plot(series(data7_x11, 'd12'),ylim=c(5*10^6,8*10^6),ylab='',col=3)
+title('trend')
+
+# plot(data7_ssmexhaustion_seasonal,type='l',ylim=c(-8*10^5, 5*10^5))
+# par(new=TRUE)
+# plot(data7_ssmexhaustion_seasonal,type='l',ylim=c(-8*10^5, 5*10^5),col=2)
+# title('seasonal')
+# 
+# plot(data7_ssmexhaustion_irregular,type='l',ylim=c(-8*10^5, 10^6))
+# par(new=TRUE)
+# plot(data7_ssmexhaustion_irregular,type='l',ylim=c(-8*10^5, 10^6),col=2)
+# title('irregular')
+
+```
+
+For data5, there is a huge change around 2009. hehehehehehehe,心里一句妈卖批不值当讲不当讲。
+
+**We need to fix this.**
+
+Anyway, let's see the difference between data5&7 and the corresponding preprocessed:
+
+```{r}
+plot(data5,ylab='', ylim=c(2.5*10^5, 7.5*10^5))
+par(new=TRUE)
+plot(series(data5_x11, 'b1'), ylab='', ylim=c(2.5*10^5, 7.5*10^5),col=2)
+
+
+plot(data7,ylab='', ylim=c(4.5*10^6, 8.5*10^6))
+par(new=TRUE)
+plot(series(data7_x11, 'b1'),ylab='', ylim=c(4.5*10^6, 8.5*10^6), col=2)
+
+```
+
+The first pic above shows why the trend from ssm is different from that from tramo-seats/x11, cause we make some adjustment at the first part(about 5 years). But in traditional methods, they put this back after some operation. 
+
+This part is to see which parameter leads to this change:
+
+```{r}
+summary(data5_x11)
+```
+
+I think the shift should be due to **LS2008.Oct** in the model.
+
+Again 我可能还是要先忽略这个东西才能继续做下去。F**k。就很烦。但是问题很多我又不能都解决，这也许是做研究经常遇到的问题吧。一次一个，做完一个也就很棒了，然后转而继续研究之前发现却没有解决的问题。那么现在，如何摆脱preprocess的困扰呢？我可以在preprocessed data上用x11/tramo-seats！！！！是不是很聪明？好像很显然...
+
+Let's compare the x11 results from the preprocessed data:(this will **COVER** the model we defined before)
+
+```{r}
+data5 <- series(data5_x11, 'b1')
+data5_x11 <- seas(data5, x11='')
+summary(data5_x11)
+
+
+plot(data5_ssmexhaustion_trend,ylim=c(2.5*10^5, 6*10^5),ylab='')
+par(new=TRUE)
+plot(series(data5_x11, 'd12'),ylim=c(2.5*10^5, 6*10^5),ylab='',col=3)
+title('trend')
+```
+
+我又要重复一些东西了hhhhhh。既然我们这里用预处理后的数据做model，那么exhaustion part need to be modified then.
+
+不对！刚刚我的exhaustion用的就是preprocessed data 。哎，我怎么如此优秀。
+
+<center> **TIAN XIU!**
+
+![](C:\\Users\\GuoLY\\Pictures\\images.jpg)</center>
+
+Let's do the same thing for the other dataset.
+
+```{r}
+data1 <- series(data1_x11, 'b1')
+data2 <- series(data2_x11, 'b1')
+data3 <- series(data3_x11, 'b1')
+data4 <- series(data4_x11, 'b1')
+data6 <- series(data6_x11, 'b1')
+data7 <- series(data7_x11, 'b1')
+data8 <- series(data8_x11, 'b1')
+data9 <- series(data9_x11, 'b1')
+data10 <- series(data10_x11, 'b1')
+
+data1_x11 <- seas(data1, x11='')
+data2_x11 <- seas(data2, x11='')
+data3_x11 <- seas(data3, x11='')
+data4_x11 <- seas(data4, x11='')
+data6_x11 <- seas(data6, x11='')
+data7_x11 <- seas(data7, x11='')
+data8_x11 <- seas(data8, x11='')
+data9_x11 <- seas(data9, x11='')
+data10_x11 <- seas(data10, x11='')
+```
+
+
+或许我可以用与处理后的数据试试logposterior？ 
+
+```{r}
+data5_postmatrix <- logposterior_matrix(series(data5_x11,'b1'),10^7,10^7)
+data5_postmatrix[which.max(data5_postmatrix$logposterior), ]
+
+
+data7_postmatrix <- logposterior_matrix(series(data7_x11,'b1'),10^11,10^11)
+data7_postmatrix[which.max(data7_postmatrix$logposterior), ]
+```
+
+It is running now, so i can't run anything for now. Just write for killing the time: if I can have the map value that I want, then what should I do next? 
+
+But remember our data: **(i)** doesn't need to be transformed; **(ii)** need to be preprocessed before analyzing.
+
+
+Let's try a babay(stupid) model for searching a general choice of c1 and c2 in prior 1:
+
+```{r}
+logposterior_matrix <- function(data, c1, c2){
+  LP <- c()
+  index <- c()
+   for (i in 1:20) {
+     for (j in 1:20) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i, j, 1)
+         
+         lp <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma) + logprior1(sigma, c1, c2)
+         LP <- c(LP, lp)
+         index <- rbind(index, sigma)
+         
+      }
+   }
+  df <- data.frame(variance=index, logposterior=LP)
+  return(df)
+}
+```
+
+```{r}
+Prior1_gridsearch <- function(dataset1,dataset2,dataset3){
+  Error <- c()
+  index <- c()
+  dataset1_x11 <- seas(dataset1,x11='')
+  dataset2_x11 <- seas(dataset2,x11='')
+  dataset3_x11 <- seas(dataset3,x11='')
+  
+  for (i in 1:10) {
+    for (j in 1:10) {
+      
+      dataset1_postmatrix <- logposterior_matrix(dataset1,10^(i-1),10^(j-1))
+      map1 <- as.numeric(dataset1_postmatrix[which.max(dataset1_postmatrix$logposterior),][-4])
+                                 
+      
+      ssmm1 <- SSModel(dataset1 ~ SSMtrend(1, Q=list(map1[2])) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = map1[1])
+      ssm1 <- KFS(ssmm1)
+      dif1 <- Dif1(dataset1_x11,ssm1,dataset1,map1)
+      
+      
+      dataset2_postmatrix <- logposterior_matrix(dataset2,10^(i-1),10^(j-1))
+      map2 <- as.numeric(dataset2_postmatrix[which.max(dataset2_postmatrix$logposterior),][-4])
+      
+      ssmm2 <- SSModel(dataset2 ~ SSMtrend(1, Q=list(map2[2])) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = map2[1])
+      ssm2 <- KFS(ssmm2)
+      dif2 <- Dif1(dataset2_x11,ssm2,dataset2,map2)
+
+      
+      dataset3_postmatrix <- logposterior_matrix(dataset3,10^(i-1),10^(j-1))
+      map3 <- as.numeric(dataset3_postmatrix[which.max(dataset3_postmatrix$logposterior),][-4])
+      
+      ssmm3 <- SSModel(dataset3 ~ SSMtrend(1, Q=list(map3[2])) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = map3[1])
+      ssm3 <- KFS(ssmm3)
+      dif3 <- Dif1(dataset3_x11,ssm3,dataset3,map3)
+
+      error <- dif1+dif2+dif3
+      Error <- c(Error, error)
+      index <- rbind(index, c(10^(i-1),10^(j-1)))
+    }
+  }
+  return(data.frame(c1=index[,1],c2=index[,2],Error=Error))
+}
+```
+
+```{r}
+c1c2_gridsearch <- Prior1_gridsearch(data5,data7,unemp)
+c1c2_gridsearch[which.min(c1c2_gridsearch$Error),]
+
+```
+
+Again I am waiting for the above code to finish, so just write something general: the final goal that what I want is an algorithm which combines KFAS and seasonal packages. My algorithm will only require the dataset ideally and then output the results based on state-space model. 
+
+OK I get the result now! Before doing any analysis, let's see the corresponding map value for these three datasets:
+
+```{r}
+data5_postmatrix <- logposterior_matrix(data5,10^8,10^9)
+data7_postmatrix <- logposterior_matrix(data7,10^8,10^9)
+unemp_postmatrix <- logposterior_matrix(unemp,10^8,10^9)
+
+data5_postmatrix[which.max(data5_postmatrix$logposterior),]
+data7_postmatrix[which.max(data7_postmatrix$logposterior),]
+unemp_postmatrix[which.max(unemp_postmatrix$logposterior),]
+
+```
+
+Of course I know these result is not good, cause the data7 plays a more important role in our error sum due to its magnitude. And since our unemp data is much smaller, the final MAP value is 111, whose best value from exhaustion is 751 if you guys remember.(I don't know who I am talking with, just for fun:).) 
+
+So just like what Aaron and I have talked last week, if we want to make a more brilliant decision, we need to look at our data, which means the choice of c1 and c2(take prior1 as an example) should be some function of the data.
+
+**Leave it here for a moment!**
+
+<br/>
+
+Let's look at those cases which need to be transformed at first then I will go home.
+
+**Review**
+
+```
+Dif2 <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- exp(coef(ssm, states = 'trend'))
+  ssm_seasonal <- exp(-rowSums(coef(ssm, states='seasonal')))
+  ssm_irregular <- data[-1]/(ssm_trend[-1]*ssm_seasonal[-length(data)])
+ 
+  D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+    sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+
+exhaustion2 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:50) {
+     for (j in 1:50) {
+         
+           ssmm <- SSModel(log(data) ~ SSMtrend(1, Q=list(j*0.02)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i*0.02)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i*0.02, j*0.02, 1)
+           
+           dif <- Dif2(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+Let's see the results from exhaustion:
+
+```{r}
+data1_exhaustion <- exhaustion2(data1)
+data1_exhaustion[which.min(data1_exhaustion$difference),]
+
+
+data2_exhaustion <- exhaustion2(data2)
+data2_exhaustion[which.max(data2_exhaustion$difference),]
+```
+
+what if we change the setting of variances to 1:50? 
+
+```{r}
+exhaustion2 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:50) {
+     for (j in 1:50) {
+         
+           ssmm <- SSModel(log(data) ~ SSMtrend(1, Q=list(j)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i, j, 1)
+           
+           dif <- Dif2(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```{r}
+data1_exhaustion <- exhaustion2(data1)
+data1_exhaustion[which.min(data1_exhaustion$difference),]
+```
+
+emmm I tried to analyze why we prefer to choose the smallest value in the transformation-needed cases, but didn't get what I want. Let's see the decomposition in these cases at first:(say variances are 111)
+
+```{r}
+plot(data8)
+summary(data8_x11)
+data8_ssmm <- SSModel(log(data8) ~ SSMtrend(1, Q=list(1)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 1)
+data8_ssm <- KFS(data8_ssmm)
+
+data8_ssm_trend <- exp(coef(data8_ssm, states = 'trend'))
+data8_ssm_seasonal <- exp(-rowSums(coef(data8_ssm, states='seasonal')))
+data8_ssm_irregular <- data8[-1]/(data8_ssm_trend[-1]*data8_ssm_seasonal[-length(data8)])
+
+plot(data8_ssm_trend,type='l',ylim=c(2*10^6,4*10^6),ylab='')
+par(new=TRUE)
+plot(series(data8_x11,'d12'),ylim=c(2*10^6,4*10^6),ylab='',col=2)
+title(main='trend')
+legend('topleft', c('ssm','x11'),col=c(1,2),lty=1)
+
+plot(data8_ssm_seasonal[-length(data8)],type='l',ylab='',ylim=c(0.9,1.2))
+par(new=TRUE)
+plot(series(data8_x11,'d10')[-1],type='l',ylab='',ylim=c(0.9,1.2),col=2)
+title('seasonal')
+legend('topleft', c('ssm','x11'),col=c(1,2),lty=1)
+
+plot(data8_ssm_irregular,type='l',ylim=c(0.985,1.015),ylab='')
+par(new=TRUE)
+plot(series(data8_x11,'d13')[-1],type='l',ylim=c(0.985,1.015),ylab='',col=2,)
+title('irregular')
+legend('topleft', c('ssm','x11'),col=c(1,2),lty=1)
+
+```
+
+看着也没啥啊！那为啥loss就是inf了？trend很接近彼此的啊，主要有差别的是irregular，但是这个magnitude很小啊！我算算loss是多少：
+
+```{r}
+Dif2(data8_x11,data8_ssm,data8,c(1,1,1))
+```
+
+wtf :) ... I forgot to update my loss function !!!! I guess the above code should make sense now. But I want to check whether the multiplication of trend, seasonal and irregular is equal to data8 itself:
+
+```{r}
+data8_prod <- series(data8_x11,'d12') *series(data8_x11,'d10')*series(data8_x11,'d13')
+sum(data8-data8_prod)
+```
+
+Well they are equal to each other!
+
+现在问题至少不卡着了。然后就是这个loss function的问题。I am thinking maybe I should change those components in the loss function into the components before taking exponential, since the denominator is $\sigma^2$... let's try! Define this loss function as **Dif3** :
+
+```{r}
+Dif3 <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_irregular <- log(data)[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+ 
+  D <-  sum((log(x11_irregular[-1])-ssm_irregular)^2)/sigma[1] + 
+    sum((log(x11_trend)-ssm_trend)^2)/sigma[2] + 
+    sum((log(x11_seasonal[-1])-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+
+exhaustion3 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:50) {
+     for (j in 1:50) {
+         
+           ssmm <- SSModel(log(data) ~ SSMtrend(1, Q=list(j)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = i)
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(i, j, 1)
+           
+           dif <- Dif3(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```{r}
+data8_exhaustion3 <- exhaustion3(data8)
+data8_exhaustion3[which.min(data8_exhaustion3$difference),]
+data8_exhaustion3[which.max(data8_exhaustion3$difference),]
+```
+
+Very good! Let's see the result from 741 on data8:
+
+```{r}
+data8_ssmm <- SSModel(log(data8) ~ SSMtrend(1, Q=list(4)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 7)
+data8_ssm <- KFS(data8_ssmm)
+
+data8_ssm_trend <- exp(coef(data8_ssm, states = 'trend'))
+data8_ssm_seasonal <- exp(-rowSums(coef(data8_ssm, states='seasonal')))
+data8_ssm_irregular <- data8[-1]/(data8_ssm_trend[-1]*data8_ssm_seasonal[-length(data8)])
+
+plot(data8_ssm_trend,type='l',ylim=c(2*10^6,4*10^6),ylab='')
+par(new=TRUE)
+plot(series(data8_x11,'d12'),ylim=c(2*10^6,4*10^6),ylab='',col=2)
+title(main='trend')
+legend('topleft', c('ssm','x11'),col=c(1,2),lty=1)
+
+plot(data8_ssm_seasonal[-length(data8)],type='l',ylab='',ylim=c(0.9,1.2))
+par(new=TRUE)
+plot(series(data8_x11,'d10')[-1],type='l',ylab='',ylim=c(0.9,1.2),col=2)
+title('seasonal')
+legend('topleft', c('ssm','x11'),col=c(1,2),lty=1)
+
+plot(data8_ssm_irregular,type='l',ylim=c(0.97,1.03),ylab='')
+par(new=TRUE)
+plot(series(data8_x11,'d13')[-1],type='l',ylim=c(0.97,1.03),ylab='',col=2,)
+title('irregular')
+legend('topleft', c('ssm','x11'),col=c(1,2),lty=1)
+```
+
+
+It seems good. Let's try exhaustion on some other datasets:
+
+```{r}
+data1_exhaustion3 <- exhaustion3(data1)
+data1_exhaustion3[which.min(data1_exhaustion3$difference),]
+
+
+data2_exhaustion3 <- exhaustion3(data2)
+data2_exhaustion3[which.min(data2_exhaustion3$difference),]
+
+data3_exhaustion3 <- exhaustion3(data3)
+data3_exhaustion3[which.min(data3_exhaustion3$difference),]
+```
+
+Since we have solved the exhaustion problem then we need to look at the likelihood! 
+
+既然在loss里components要取log形式的，那么在likelihood里应该也取log的喽！Let's define a new (log)likelihood function:
+
+```{r}
+
+loglikelihood <- function(data, trend, season, sigma){
+  
+  n <- length(data)
+  a <- 0
+  for (i in 12:n)  a <- a + (sum(season[(i-11):i]))^2
+  l <- -(n-11)/2 * log(sigma[1]) - 
+    (n-11)/2 * log(sigma[2]) - (n-11)/2 * log(sigma[3]) -
+    sum((data[-c(1:11)]-trend[-c(1:11)]-season[-c(1:10,n)])^2)/(2*sigma[1]) - 
+    sum((trend[-c(1:11)]-trend[-c(1:10,n)])^2)/(2*sigma[2]) - 
+    a / (2*sigma[3])
+  return(l)
+  
+}
+
+# define the log likelihood matrix
+loglikelihood_matrix <- function(data){
+  LL <- c()
+  index <- c()
+   for (i in 1:100) {
+     for (j in 1:100) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i*0.05, j*0.05, 1)
+         
+         ll <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma)
+         LL <- c(LL, ll)
+         index <- rbind(index, sigma)
+      }
+   }
+  df <- data.frame(variance=index, loglikelihood=LL)
+  return(df)
+}
+```
+
+After copying these definitions, I found that there is no need to define new function...cause in loglikelihood_matrix function, we will input the log(data) directly. Let's see the result:
+
+```{r}
+data1_llmatrix <- loglikelihood_matrix(log(data1))
+data2_llmatrix <- loglikelihood_matrix(log(data2))
+data3_llmatrix <- loglikelihood_matrix(log(data3))
+data8_llmatrix <- loglikelihood_matrix(log(data8))
+```
+```{r}
+data1_llmatrix[which.max(data1_llmatrix$loglikelihood),]
+data2_llmatrix[which.max(data2_llmatrix$loglikelihood),]
+data3_llmatrix[which.max(data3_llmatrix$loglikelihood),]
+data8_llmatrix[which.max(data8_llmatrix$loglikelihood),]
+```
+
+
+行吧，我傻了。虽然我解决了如何找到best fit的问题，但是mle这里我们还是会prefer the smallest value because of the loglikelihood expression.
+
+<center>**一番演草**</center>
+
+For the transformation-needed cases, the critical point is very small and for normal cases, critical points are very large generally.
+
+Let's check whether I am right or not: suppose the variance belongs to c(0.0001，0.005). If my inference is correct, then the mle should not be the minimum value.
+
+```{r}
+# define the log likelihood matrix
+loglikelihood_matrix <- function(data){
+  LL <- c()
+  index <- c()
+   for (i in 1:50) {
+     for (j in 1:50) {
+         
+         ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j*0.0001)) + 
+                   SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                 H = i*0.0001)
+         ssm <- KFS(ssmm)
+         
+         ssm_trend <- coef(ssm, states = 'trend')
+         ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  #      ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+         sigma <- c(i*0.0001, j*0.0001, 1)
+         
+         ll <- loglikelihood(data, ssm_trend, ssm_seasonal, sigma)
+         LL <- c(LL, ll)
+         index <- rbind(index, sigma)
+      }
+   }
+  df <- data.frame(variance=index, loglikelihood=LL)
+  return(df)
+}
+
+data8_llmatrix <- loglikelihood_matrix(log(data8))
+data8_llmatrix[which.max(data8_llmatrix$loglikelihood),]
+
+```
+
+Very good! The result of $\sigma_T^2$ is not the minimum although the mle of $\sigma_y^2$ is still the smallest one. 
+
+And just like what we have done for the normal cases, we need to modify/twist the mle to a map estimate that we hope to have.
+
+
+<center>**SUMMARY 20191115**</center>
+
+I spend quite a long time on these part I think, but different from the name of this file, I haven't done a lot of things related to bayesian analysis. The main usage of this part is to solve most of little problems that we may meet with different dataset. In a word, this part is to serve our final goal.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

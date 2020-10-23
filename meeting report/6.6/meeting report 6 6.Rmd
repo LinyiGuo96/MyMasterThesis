@@ -1,0 +1,399 @@
+---
+title: "meeting report 6.6"
+author: "linyiguo"
+date: "2019年6月6日"
+output: word_document
+---
+
+Hi Aaron, this is a summary of the results I got recently and some other questions.   
+
+# I
+After last meeting, I tried some suggestions you gave me. Specifically: 
+* enlarge the standard error from 1 to 5;
+* increase the # of particles from 100 to 1000;
+* both of them
+And I plot the first three moments at first.
+
+## initial
+```{r}
+set.seed(1)
+library(forecast)
+model <- Arima(ts(rnorm(24000),freq=12), order=c(0,1,1), seasonal=c(0,1,1),fixed=c(theta=0.5, Theta=0.5))
+data <- simulate(model,nsim=240)
+
+# 1st moment
+# generate particles
+Tr1 = data[1] + rnorm(100,sd=1)
+S1 = rnorm(100,sd=1) 
+
+# update weights
+w = dnorm(data[1]-Tr1-S1)
+w = w/sum(w)
+
+# resample
+Tr1r = sample(Tr1, 100, replace=TRUE, prob=w)
+S1r = sample(S1, 100, TRUE, prob=w)
+
+# 2nd moment
+Tr2 = Tr1r + rnorm(100,sd=1)
+S2 = -S1r + rnorm(100,sd=1) 
+
+# update weights
+w = dnorm(data[2]-Tr2-S2)
+w = w/sum(w)
+
+# resample
+Tr2r = sample(Tr2, 100, replace=TRUE, prob=w)
+S2r = sample(S2, 100, TRUE, prob=w)
+
+# 3rd moment
+Tr3 = Tr2r + rnorm(100,sd=1)
+S3 = -S1r -S2r + rnorm(100,sd=1) 
+
+# update weights
+w = dnorm(data[3]-Tr3-S3)
+w = w/sum(w)
+
+# resample
+Tr3r = sample(Tr3, 100, replace=TRUE, prob=w)
+S3r = sample(S3, 100, TRUE, prob=w)
+
+# put the first three moments' particles together
+dataparticle_3 = as.matrix(data.frame(c(rep(1,100),rep(2,100),rep(3,100)),c(Tr1+S1+rnorm(100,sd=1),Tr2+S2+rnorm(100,sd=1),Tr3+S3+rnorm(100,sd=1))))
+colnames(dataparticle_3) <- c("t","particles")
+
+# plot the final result
+boxplot(particles~t, data=dataparticle_3,ylim=c(-5,15))
+points(x=c(data[1:3]),pch=19,col="red",cex=1.5)
+```
+
+## enlarge the deviation
+```{r}
+set.seed(1)
+
+# 1st moment
+# generate particles
+Tr1 = data[1] + rnorm(100,sd=5)
+S1 = rnorm(100,sd=5) 
+
+# update weights
+w = dnorm(data[1]-Tr1-S1)
+w = w/sum(w)
+
+# resample
+Tr1r = sample(Tr1, 100, replace=TRUE, prob=w)
+S1r = sample(S1, 100, TRUE, prob=w)
+
+# 2nd moment
+Tr2 = Tr1r + rnorm(100,sd=5)
+S2 = -S1r + rnorm(100,sd=5) 
+
+# update weights
+w = dnorm(data[2]-Tr2-S2)
+w = w/sum(w)
+
+# resample
+Tr2r = sample(Tr2, 100, replace=TRUE, prob=w)
+S2r = sample(S2, 100, TRUE, prob=w)
+
+# 3rd moment
+Tr3 = Tr2r + rnorm(100,sd=5)
+S3 = -S1r -S2r + rnorm(100,sd=5) 
+
+# update weights
+w = dnorm(data[3]-Tr3-S3)
+w = w/sum(w)
+
+# resample
+Tr3r = sample(Tr3, 100, replace=TRUE, prob=w)
+S3r = sample(S3, 100, TRUE, prob=w)
+
+# put the first three moments' particles together
+dataparticle_3 = as.matrix(data.frame(c(rep(1,100),rep(2,100),rep(3,100)),c(Tr1+S1+rnorm(100,sd=5),Tr2+S2+rnorm(100,sd=5),Tr3+S3+rnorm(100,sd=5))))
+colnames(dataparticle_3) <- c("t","particles")
+
+# plot the final result
+boxplot(particles~t, data=dataparticle_3,ylim=c(-25,35))
+points(x=c(data[1:3]),pch=19,col="red",cex=1.5)
+```
+## increase particles
+```{r}
+set.seed(1)
+# 1st moment
+# generate particles
+Tr1 = data[1] + rnorm(10000)
+S1 = rnorm(10000)
+
+# update weights
+w = dnorm(data[1]-Tr1-S1)
+w = w/sum(w)
+
+# resample
+Tr1r = sample(Tr1, 10000, replace=TRUE, prob=w)
+S1r = sample(S1, 10000, TRUE, prob=w)
+
+# 2nd moment
+Tr2 = Tr1r + rnorm(10000)
+S2 = -S1r + rnorm(10000) 
+
+# update weights
+w = dnorm(data[2]-Tr2-S2)
+w = w/sum(w)
+
+# resample
+Tr2r = sample(Tr2, 10000, replace=TRUE, prob=w)
+S2r = sample(S2, 10000, TRUE, prob=w)
+
+# 3rd moment
+Tr3 = Tr2r + rnorm(10000)
+S3 = -S1r -S2r + rnorm(10000) 
+
+# update weights
+w = dnorm(data[3]-Tr3-S3)
+w = w/sum(w)
+
+# resample
+Tr3r = sample(Tr3, 10000, replace=TRUE, prob=w)
+S3r = sample(S3, 10000, TRUE, prob=w)
+
+# put the first three moments' particles together
+dataparticle_3 = as.matrix(data.frame(c(rep(1,10000),rep(2,10000),rep(3,10000)),c(Tr1+S1+rnorm(10000),Tr2+S2+rnorm(10000),Tr3+S3+rnorm(10000))))
+colnames(dataparticle_3) <- c("t","particles")
+
+# plot the final result
+boxplot(particles~t, data=dataparticle_3,ylim=c(-4,14))
+points(x=c(data[1:3]),pch=19,col="red",cex=1.5)
+```
+## both
+```{r}
+set.seed(1)
+# 1st moment
+# generate particles
+Tr1 = data[1] + rnorm(10000,sd=5)
+S1 = rnorm(10000,sd=5) 
+
+# update weights
+w = dnorm(data[1]-Tr1-S1)
+w = w/sum(w)
+
+# resample
+Tr1r = sample(Tr1, 10000, replace=TRUE, prob=w)
+S1r = sample(S1, 10000, TRUE, prob=w)
+
+# 2nd moment
+Tr2 = Tr1r + rnorm(10000,sd=5)
+S2 = -S1r + rnorm(10000,sd=5) 
+
+# update weights
+w = dnorm(data[2]-Tr2-S2)
+w = w/sum(w)
+
+# resample
+Tr2r = sample(Tr2, 10000, replace=TRUE, prob=w)
+S2r = sample(S2, 10000, TRUE, prob=w)
+
+# 3rd moment
+Tr3 = Tr2r + rnorm(10000,sd=5)
+S3 = -S1r -S2r + rnorm(10000,sd=5) 
+
+# update weights
+w = dnorm(data[3]-Tr3-S3)
+w = w/sum(w)
+
+# resample
+Tr3r = sample(Tr3, 10000, replace=TRUE, prob=w)
+S3r = sample(S3, 10000, TRUE, prob=w)
+
+# put the first three moments' particles together
+dataparticle_3 = as.matrix(data.frame(c(rep(1,10000),rep(2,10000),rep(3,10000)),c(Tr1+S1+rnorm(10000,sd=5),Tr2+S2+rnorm(10000,sd=5),Tr3+S3+rnorm(10000,sd=5))))
+colnames(dataparticle_3) <- c("t","particles")
+
+# plot
+boxplot(particles~t, data=dataparticle_3)
+points(x=c(data[1:3]),pch=19,col="red",cex=1.5)
+
+```
+**comment:** It seems that enlarging deriation is more efficient compared with the increament of particles. But combination of them works better.
+
+## II
+Under new conditions(1000 particles and normal dist'n with sd=5), I applied **SIR** again. Although the degeneracy phenomenon alleviates a little bit, weights are going to be 0 eventually. And another problem is that the *trend* & *deseasoned series* here are too spiky even look like seasonal component.
+```{r}
+set.seed(1)
+
+# Initialization
+S <- matrix(0,1000,251) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,1000,251)
+Tr[,11] <- t(rep(data[1],1000))
+component <- c()
+a = 60 # a-11 is the length of our time series
+
+for (i in 12:a) {
+  
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(1000,sd=5)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(1000,sd=5)
+  
+  # update weights
+  w <- dnorm(data[i-11]-Tr[,i]-S[,i])
+  w <- w/sum(w)
+ 
+  
+  # evaluate state value
+  t <- sum(w * Tr[,i])
+  s <- sum(w * S[,i])
+  
+  # add to our component path
+  component <- rbind(component, c(t,s))
+  
+  # resample
+  Tr[,i] <- sample(Tr[,i], size =1000, replace = TRUE, prob = w)
+  S[,i] <- sample(S[,i], size = 1000, replace = TRUE, prob = w)
+}
+
+# put our data & trend & season & deseasoned curves together
+plot(data[1:(a-11)],type = "l",ylim = c(-60,100),ylab='')
+par(new=TRUE)
+plot(component[,1],type="l",col="green",ylim = c(-60,100),ylab='')
+par(new=TRUE)
+plot(component[,2],type="l",col="blue",ylim = c(-60,100),ylab='')
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,2],type="l",col="red",ylim=c(-60,100),ylab='')
+legend("topleft",c("data","trend","seasonal","deseasoned"),col=c("black","green","blue","red"),lty=c(1,1,1,1))
+
+# data vs deseasoned
+plot(data[1:(a-11)],type = "l",ylim = c(-30,100))
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,2],type="l",col="red",ylab='',ylim = c(-30,100))
+legend("topleft", c("data","deseasoned"),col=c("black","red"),lty=c(1,1))
+
+# data vs trend
+plot(data[1:(a-11)],type = "l",ylim = c(-60,100),ylab='')
+par(new=TRUE)
+plot(component[,1],type="l",col="green",ylim = c(-60,100),ylab='')
+legend("topleft",c("data","trend"),col=c("black","green"),lty=c(1,1))
+
+# data vs season
+plot(data[1:(a-11)],type = "l",ylim = c(-60,100),ylab='')
+par(new=TRUE)
+plot(component[,2],type="l",col="blue",ylim = c(-60,100),ylab='')
+legend("topleft",c("data","seasonal"),col=c("black","blue"),lty=c(1,1))
+
+# data vs deseason&detrend
+plot(data[1:(a-11)],type = "l",ylim = c(-60,200),ylab='')
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,1]-component[,2], type="l",col="red",ylim = c(-60,200),ylab='')
+
+# data vs seanson+trend
+plot(data[1:(a-11)],type = "l",ylim = c(-60,200),ylab='',lwd=1.5)
+par(new=TRUE)
+plot(component[,1]+component[,2], type="l",col="red",ylim = c(-60,200),ylab='')
+
+```
+
+It occurs to me that **why don't we utilize the seasonal series we got before?**  Suppose we know(which is a truth) how to use t.s. methods to extract seasonal components, then it should be feasible if we treat first of them as our initial seasonal data.
+**Review** Output of *data-final(m_x11)* or *data-final(m_seats)* is our seasonal component.   
+```{r}
+library(seasonal)
+set.seed(1)
+
+# define m_x11
+m_x11 <- seas(data, x11 = "", regression.aictest =  NULL)
+
+# Initialization
+S <- matrix(0,1000,251) # Cause Seasonal component's state space model, we have additional 11 zero-values.
+Tr <- matrix(0,1000,251)
+Tr[,11] <- data[1]
+S[,1:11] <- rep(as.numeric(data-final(m_x11))[1:11],1000)
+component <- c()
+a = 90 # a-11 is the length of our t.s.
+
+for (i in 12:a) {
+  
+  # update particles
+  Tr[,i] <- Tr[,i-1] + rnorm(1000,sd=5)
+  for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+  S[,i] <- S[,i] + rnorm(1000,sd=5)
+  
+  # update weights
+  w <- dnorm(data[i-11]-Tr[,i]-S[,i])
+  w <- w/sum(w)
+  
+  # evaluate state value
+  t <- sum(w * Tr[,i])
+  s <- sum(w * S[,i])
+  
+  # add to our component path
+  component <- rbind(component, c(t,s))
+  
+  # resample
+  Tr[,i] <- sample(Tr[,i], size =1000, replace = TRUE, prob = w)
+  S[,i] <- sample(S[,i], size = 1000, replace = TRUE, prob = w)
+}
+
+# plot four curves together
+plot(data[1:(a-11)],type = "l",ylim = c(-60,250),ylab='')
+par(new=TRUE)
+plot(component[,1],type="l",col="green",ylim = c(-60,250),ylab='')
+par(new=TRUE)
+plot(component[,2],type="l",col="blue",ylim = c(-60,250),ylab='')
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,2],type="l",col="red",ylim=c(-60,250),ylab='')
+legend("topleft",c("data","trend","seasonal","deseasoned"),col=c("black","green","blue","red"),lty=c(1,1,1,1))
+
+# data vs deseasoned
+plot(data[1:(a-11)],type = "l",ylim = c(-60,250))
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,2],type="l",col="red",ylim=c(-60,250),ylab='')
+legend("topleft", c("data","deseasoned"),col=c("black","red"),lty=c(1,1))
+
+# data vs trend
+plot(data[1:(a-11)],type = "l",ylim = c(-60,250),ylab='')
+par(new=TRUE)
+plot(component[,1],type="l",col="green",ylim = c(-60,250),ylab='')
+legend("topleft",c("data","trend"),col=c("black","green"),lty=c(1,1))
+
+# data vs season
+plot(data[1:(a-11)],type = "l",ylim = c(-60,250),ylab='')
+par(new=TRUE)
+plot(component[,2],type="l",col="blue",ylim = c(-60,250),ylab='')
+legend("topleft",c("data","seasonal"),col=c("black","blue"),lty=c(1,1))
+
+# data vs deseason&detrend
+plot(data[1:(a-11)],type = "l",ylim = c(-60,250),ylab='')
+par(new=TRUE)
+plot(data[1:(a-11)]-component[,1]-component[,2], type="l",col="red",ylim = c(-60,250),ylab='')
+
+# data vs seanson+trend
+plot(data[1:(a-11)],type = "l",ylim = c(-60,250),ylab='',lwd=1.5)
+par(new=TRUE)
+plot(component[,1]+component[,2], type="l",col="red",ylim = c(-60,250),ylab='')
+
+```
+1000 particles corresponse to 90 time steps.
+**comment: **These plots are much more reasonable, but weight degeneracy still happens. 
+
+# III
+I am sorry for one misunderstanding before, that is we can't avoid degeneracy simply by particle filter. After checking some content about particle filter, I think I need to spend some time reviewing related material in this weekend. 
+
+# IV
+I think my method to have initialization is kinda informal here(although it works good when we look at results). I noticed the **chapter 6** of book **Time series analysis by state space model(Durbin & Koopman)** is targeted at initialization problem. But it is likely to focus on kalman filter, I am not sure whether it is worthy to read for now... 
+
+# V
+On the other hand, I think I need to learn how to transform one seasonal arima model into one state space model...
+
+----------------------------------------**UPDATE 6.9**----------------------------------------
+
+心情不是很好，稍微有些低落。下午和pp视频的时候，恰逢ex给她打电话，但是我还是若无其事地傻笑。也许她并没有意识到，我已经知道了电话那边的人是谁。我安慰自己，也开导自己，虽然心里还是有些别扭，但还是选择装作什么事都没发生。我没有能力去掌控她的生活，就像她不可能掌控给我的生活一样，所以就像她说的，我不能双标，不然的话就太自私了。我选择相信她，这样做既是源于自信，也是对她的信任。就这样吧，一切都还没有开始，我又何必在这里自怜自艾。
+
+*又划了两天水，现在加上Aaron给的一些comments*
+* 1000 particles are not too many;    
+* at each time step t, suppose $X_{1:t}$ we got is exactly right, plot 1000 proposals for $X_{t+1}$. Based on Aaron said, there should be no degeneracy, so we can see visually where our proposals are not close to the true series;    
+* what's the meaning of 'too spiky';    
+* we can try to learn something in that chapter, since i) many principles applided are same; ii) we can begin with the kalman filter. Actually our models used so far work with the kalman fiter, we do not need the extra genarality of *SIR* yet.
+
+
+
+
+
+

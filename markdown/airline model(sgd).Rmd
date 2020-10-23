@@ -1,0 +1,22 @@
+---
+title: "Airline model(sgd)"
+author: "LinyiGuo"
+date: "2019/7/30"
+output: html_document
+---
+
+I am trying to solve the mle by using sgd in my own code.
+
+## Deviation is fixed
+
+```{r}
+# Define negative log likelihood
+nlll <- funciton(trend, season, ...){
+  s = sum((Y-trend-season)^2/(2*sigma1^2))
+  s = s + (sum(diff(trend)^2)+trend[1]-trend0)/(2*sigma2^2)
+  ss = 
+  s = s + ss
+  return(s)
+}
+
+```

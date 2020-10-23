@@ -1,0 +1,160 @@
+---
+title: "Reprot20200319"
+author: "Linyi Guo"
+date: "2020/3/19"
+output: pdf_document
+---
+Hi Professor,
+
+The following report is basically what I have done after our last meeting.
+
+# Review(update)
+
+The data we used in the following analysis contains 1000 datasets at length 180(15 years) simulated from the same state space model as following,
+
+\begin{align}
+Y_t &= T_t+S_t+I_t \quad & where \quad I_t\sim N(0,10)\\
+T_t &=T_{t-1}+\epsilon_t \quad &where \quad\epsilon_t\sim N(0,5) \\
+S_t &=-\sum_{j=1}^{11}S_{t-j}+\eta_t \quad &where \quad \eta_t\sim N(0,1)
+\end{align}
+
+Then I use the first 14 years to build models(*Part 1*) and the last year is saved for forecasting(*Part 2*).
+
+
+# Part 1: Decomposition
+
+This part is to compare the errors among different methods and X-11. Since we mainly care about *trend* and *seasonal adjusted* series, I defined the error as 
+$$Error = \sum (Trend_{X-11} - Trend_{Object})^2 + \sum (Seasonal_{X-11} - Seasonal_{Object})^2$$
+*Because SA = Data - Seasonal, the sum of difference of seasonal series is equal to that of SA series.*
+
+Also, according to *Andrew Gelman(2006)*, I took the half-Cauchy distribution as a weakly-informative prior at the same time. The following table is the `summary` result:
+
+**SORRY, I realized the half-Cauchy they suggested is for standard error not the variance when I was writing the part 3, but I applied it as the prior for variance $\sigma^2$. So all results related to MAP_halfCauchy are incorrect.**
+
+```{r include=FALSE}
+load('C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file7/error_decomp.RData')
+load('C:/Users/GuoLY/desktop/markdown/2020 Winter/masterthesis/file7/error_pre.RData')
+
+library(seasonal)
+library(KFAS)
+library(doParallel)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(forecast)
+library(extraDistr)
+```
+
+```{r echo=FALSE}
+error_decomp %>% select(c(1,3,4,6)) %>% summary
+```
+
+As we can see, the error based on MLE is the worst and the result after considering the informative prior(the third column, MAP) is much better. As a contrast, the wearkly-informative prior half-Cauchy distribution  also works but not as much as our informative prior. The second column here is just the result from the ideal variance using grid search and our loss function, which have one more term w.r.t. the derivation of trend component compared with the error defination above.
+
+The following figures are the distributions of these errors and their differences:
+
+```{r echo=FALSE, fig.asp=1.5}
+par(mfrow=c(2,1))
+plot(density(error_decomp[,1]), col=2, ylim=c(0,0.005), xlim=c(0,1500), lwd=2, main='', xlab='')
+par(new=TRUE)
+plot(density(error_decomp[,3]), col=3, ylim=c(0,0.005), xlim=c(0,1500), lwd=2, main='', xlab='')
+par(new=TRUE)
+plot(density(error_decomp[,4]), col=4, ylim=c(0,0.005), xlim=c(0,1500), lwd=2, main='', xlab='')
+par(new=TRUE)
+plot(density(error_decomp[,6]), col=5, ylim=c(0,0.005), xlim=c(0,1500), lwd=2, main='', xlab='')
+title(main='Decomposition error comparison(X11 is standard)')
+legend('topright', c('MLE', 'LOSS', 'MAP', 'MAP_halfCauchy'), col=c(2,3,4,5), lty=1, lwd=2)
+
+
+plot(density(error_decomp[,1] - error_decomp[,3]), col=2, ylim=c(0,0.027), xlim=c(-400,500), lwd=2, main='', xlab='')
+par(new=TRUE)
+plot(density(error_decomp[,1] - error_decomp[,6]), col=3, ylim=c(0,0.027), xlim=c(-400,500), lwd=2, main='', xlab='')
+par(new=TRUE)
+plot(density(error_decomp[,3] - error_decomp[,6]), col=4, ylim=c(0,0.027), xlim=c(-400,500), lwd=2, main='', xlab='')
+abline(v=0, lwd=2)
+title(main='Distribution of differences among decomposition errors')
+legend('topright', c('MLE-MAP', 'MLE-MAP_halfCauchy', 'MAP-MAP_halfCauchy'), col=c(2,3,4), lty=1, lwd=2)
+
+par(mfrow=c(1,1))
+
+```
+
+From the second figure, we can also derive that the decomposition from the informative prior is closer to that from X-11.
+
+**Update:** according to the figure above, it is obvious that:
+
+* the error of decomposed components from MLE is greater than that from MAP in most cases(this *MAP* estimator is obtained from our informative prior);
+
+* the error of decomposed components from MLE is greater than that from MAP(half-Cauchy prior) in most cases;
+
+* the error of decomposed components from MAP is less than that from MAP(half-Cauchy prior) in most cases.
+
+$$Error = \sum (Trend_{X-11} - Trend_{Object})^2 + \sum (Seasonal_{X-11} - Seasonal_{Object})^2$$
+
+This is the boxplot of their differences:(*MAP1* is the estimator from our informative prior; *MAP2* is from half-Cauchy)
+
+```{r echo=FALSE}
+boxplot(error_decomp[,c(1,1,3)] - error_decomp[,c(3,6,6)], names =c('X11 - MAP1', 'X11 - MAP2', 'MAP1 - MAP2'))
+```
+
+
+
+# Part 2: Prediction
+
+Now let's look at the behaviors of these methods for prediction. Still we shall use the simulated data. 
+*Review*: the simulated data contains 1000 datasets, and each one's length is 15 years. The *Part 1: Decomposition* is build on the first 14 yrs, and the data of the last year is to serve the prediction part.
+
+First, the summary of their prediction error:
+
+```{r echo=FALSE}
+error_pre %>% select(c(1,2,3,7)) %>% summary
+```
+
+*I DID NOT post the result of LOSS here.*
+
+When we compare these prediction errors, we may find that the differences among three state space models are not great, but X11 here really did a bad job. Although the result after considering our informative prior seems to be equivalent to that from weakly-informative prior, on my end it makes sense, because the information we used to build our prior is only related to the decomposition, we didn't consider the prediction error in our *LOSS* function. From this perspective, if we add this consideration into our loss function, the prediction could be better perhaps. But in my opinion, this is a little worthless to check since the differences between these SSMs are really small.
+
+These are the figures of distributions of differences among these prediction errors:
+
+```{r echo=FALSE}
+
+plot(density(error_pre[,1]), col=alpha(1,1), ylim=c(0,0.0015), xlim=c(0,6000), lwd=2, main='', xlab='')
+par(new=TRUE)
+plot(density(error_pre[,2]), col=alpha(2,1), ylim=c(0,0.0015), xlim=c(0,6000), lwd=2, main='', xlab='')
+par(new=TRUE)
+plot(density(error_pre[,3]), col=alpha(3,1), ylim=c(0,0.0015), xlim=c(0,6000), lwd=2, main='', xlab='')
+par(new=TRUE)
+plot(density(error_pre[,7]), col=alpha(4,1), ylim=c(0,0.0015), xlim=c(0,6000), lwd=2, main='', xlab='')
+title(main='Prediction error comparison')
+legend('topright', c('X-11','MLE', 'MAP', 'MAP_halfCauchy'), col=c(1,2,3,4), lty=1, lwd=2)
+
+
+par(mfrow=c(2,2))
+plot(density(error_pre[,1] - error_pre[,3]), col=alpha(2,.5), lwd=2, main='', xlab='')
+abline(v=0, lwd=2)
+title(main='X-11 - MAP')
+
+plot(density(error_pre[,2] - error_pre[,3]), col=alpha(3,.5), lwd=2, main='', xlab='')
+abline(v=0, lwd=2)
+title(main='MLE - MAP')
+
+plot(density(error_pre[,3] - error_pre[,7]), col=alpha(4,.5), lwd=2, main='', xlab='')
+abline(v=0, lwd=2)
+title(main = 'MAP - MAP_halfCauchy')
+
+plot(density(error_pre[,2] - error_pre[,7]), col=alpha(5,.5), lwd=2, main='', xlab='')
+abline(v=0, lwd=2)
+title(main='MLE - MAP_halfCauchy')
+par(mfrow=c(1,1))
+
+```
+
+# Part 3: Summary
+
+We talked about the difference between SSM and hierarchical models last time. It seems that SSM is one special case where the number of clusters/groups equals to 1, and this is the reason why I chose half-Cauchy, cause Andrew Gelman and others suggest using half-t family under this case.
+
+**SORRY, I just realized the half-Cauchy they suggested is for standard error not the variance when I was writing this part, but I applied it as the prior for variance $\sigma^2$. So all results related to MAP_halfCauchy are incorrect. I will fix this ASAP.**
+
+I haven't moved to check the real data, but I will try them later this weeK once I finished the problem above :)
+
+

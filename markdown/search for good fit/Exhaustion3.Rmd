@@ -1,0 +1,520 @@
+---
+title: "Exhaustion3"
+author: "LinyiGuo"
+date: "2019/10/23"
+output: 
+  html_document:
+    toc: true
+  pdf_document:
+    toc: true
+---
+
+
+```{r include=FALSE}
+rm(list=ls())
+set.seed(9483)
+```
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+```
+
+# Part 1
+
+Based on Aaron's suggestion, I first change the standard(error) to the sum of (normalized) different components' squared differences, that is:
+$${\sum(X11_{trend}-SSM_{trend})^2} + {\sum(X11_{seasonal}-SSM_{seasonal})^2} + {\sum(X11_{seasadj}-SSM_{seasadj})^2}$$
+
+
+```{r}
+# define our standard to choose parameters
+# note this is for additive models
+Dif <- function(x11, ssm, data){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_seasadj <- series(x11, 'd11')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+ 
+  D <-  sum((x11_trend-ssm_trend)^2) + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2) +
+    sum((x11_seasadj[-1]-ssm_seasadj)^2)
+    
+  return(D)
+}
+```
+
+Here we still let the variance to be *0.001, 0.01, 0.1, 1, 10, 100*.
+
+```{r}  
+# define the search function
+exhaustion <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:6) {
+     for (j in 1:6) {
+       for (k in 1:6) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(10^(-4+j))) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 10^(-4+k)),
+                   H = 10^(-4+i))
+           ssm <- KFS(ssmm)
+           
+           dif <- Dif(x11, ssm, data)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, c(10^(-4+i),10^(-4+j),10^(-4+k)))
+         }
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```{r}
+unemp_exhaustion <- exhaustion(unemp)
+unemp_exhaustion[which.min(unemp_exhaustion$difference),]
+unemp_exhaustion
+```
+
+The result in the end is as same as what we got before, which is (10,10,10)
+
+# Part 2
+
+Again, we change the error into this defination: 
+$$ \frac{\sum(X11_{irregular}-SSM_{irregular})^2}{\sigma_I^2} + \frac{\sum(X11_{trend}-SSM_{trend})^2}{\sigma_T^2} + \frac{\sum(X11_{seasonal}-SSM_{seasonal})^2}{\sigma_S^2}$$
+
+```{r}
+# change the defination of error  
+Dif2 <- function(x11, ssm, data, sigma){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_irregular <- series(x11, 'd13')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_irregular <- data[-1] - ssm_trend[-1] - ssm_seasonal[-length(data)]
+ 
+  D <-  sum((x11_irregular[-1]-ssm_irregular)^2)/sigma[1] + 
+    sum((x11_trend-ssm_trend)^2)/sigma[2] + 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2)/sigma[3] 
+    
+  return(D)
+}
+```
+
+
+```{r}
+
+# define the search function
+
+exhaustion2 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:6) {
+     for (j in 1:6) {
+       for (k in 1:6) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(10^(-4+j))) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 10^(-4+k)),
+                   H = 10^(-4+i))
+           ssm <- KFS(ssmm)
+           
+           sigma <- c(10^(-4+i),10^(-4+j),10^(-4+k))
+           
+           dif <- Dif2(x11, ssm, data, sigma)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, sigma)
+         }
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+
+```
+
+```{r}
+unemp_exhaustion2 <- exhaustion2(unemp)
+unemp_exhaustion2[which.min(unemp_exhaustion2$difference),]
+```
+
+Under this defination, our best fit is c(100,100,100). I basically have an idea why this happens, but let's see the result from this estimate first: 
+
+```{r include=FALSE}
+
+ssmm1 <- SSModel(unemp ~ SSMtrend(1, Q=list(10)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 10),
+                   H = 10)
+unemp_ssm1 <- KFS(ssmm1)
+
+ssmm2 <- SSModel(unemp ~ SSMtrend(1, Q=list(100)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 100),
+                   H = 100)
+unemp_ssm2 <- KFS(ssmm2)
+
+unemp_x11 <- seas(unemp, x11='')
+
+unemp_x11_trend <- series(unemp_x11, 'd12')
+unemp_x11_seasonal <- series(unemp_x11, 'd10')
+unemp_x11_irregular <- series(unemp_x11, 'd13')
+
+unemp_ssm1_trend <- coef(unemp_ssm1, states = 'trend')
+unemp_ssm1_seasonal <- -rowSums(coef(unemp_ssm1, states='seasonal'))
+unemp_ssm1_irregular <- unemp[-1] - unemp_ssm1_trend[-1] -
+  unemp_ssm1_seasonal[-length(unemp)]
+
+unemp_ssm2_trend <- coef(unemp_ssm2, states = 'trend')
+unemp_ssm2_seasonal <- -rowSums(coef(unemp_ssm2, states='seasonal'))
+unemp_ssm2_irregular <- unemp[-1] - unemp_ssm2_trend[-1] -
+  unemp_ssm2_seasonal[-length(unemp)]
+```
+
+```{r echo=FALSE}
+plot(unemp_x11_trend, ylim=c(5500,15500),ylab='')
+par(new=TRUE)
+plot(unemp_ssm2_trend, ylim=c(5500,15500),ylab='', col=2)
+title(main='Trend') 
+legend('topleft', c('x11','ssm'), col=c(1,2), lty=1)
+```
+
+```{r echo=FALSE}
+plot(ts(unemp_x11_seasonal[-1], start=c(1990,2), frequency=12), 
+     ylim=c(-700,1000),ylab='')
+par(new=TRUE)
+plot(ts(unemp_ssm2_seasonal[-length(unemp)],start=c(1990,2),frequency = 12), 
+     col=2, ylim=c(-700,1000),ylab='')
+title(main='Season(red:ssm)')
+```
+
+```{r echo=FALSE}
+plot(ts(unemp_x11_seasonal[-1][1:100], start=c(1990,2), frequency=12), 
+     ylim=c(-700,1000),ylab='')
+par(new=TRUE)
+plot(ts(unemp_ssm2_seasonal[-length(unemp)][1:100],start=c(1990,2),frequency = 12), 
+     col=2, ylim=c(-700,1000),ylab='')
+title(main='First 100 Season Points(red:ssm)')
+```
+
+```{r}
+plot(ts(unemp_x11_irregular[-1], start=c(1990,02),frequency = 12), 
+     ylim=c(-250,250), ylab='')
+par(new=TRUE)
+plot(ts(unemp_ssm2_irregular, start=c(1990,02),frequency = 12), 
+     ylim=c(-250,250), ylab='', col=2)
+title(main='Irregular(red:ssm)')
+```
+
+```{r}
+plot(ts(unemp_x11_irregular[-1][1:100], start=c(1990,02),frequency = 12), 
+     ylim=c(-250,250), ylab='')
+par(new=TRUE)
+plot(ts(unemp_ssm2_irregular[1:100], start=c(1990,02),frequency = 12), 
+     ylim=c(-250,250), ylab='', col=2)
+title(main='Irregular(red:ssm)')
+```
+
+```{r}
+plot(unemp_ssm1_irregular, type='l')
+par(new=TRUE)
+plot(unemp_ssm2_irregular, type='l', col=2)
+```
+
+Based on the above figure, I **guess** that Kalman filter will give us the same result as long as those variances' values that we give it have the same ratio.
+
+
+# Test my guess
+
+```{r include=FALSE}
+
+ssmm3 <- SSModel(unemp ~ SSMtrend(1, Q=list(1)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 1)
+unemp_ssm3 <- KFS(ssmm3)
+
+unemp_ssm3_trend <- coef(unemp_ssm3, states = 'trend')
+unemp_ssm3_seasonal <- -rowSums(coef(unemp_ssm3, states='seasonal'))
+unemp_ssm3_irregular <- unemp[-1] - unemp_ssm3_trend[-1] -
+  unemp_ssm3_seasonal[-length(unemp)]
+
+```
+
+```{r echo=FALSE}
+# trend
+plot(unemp_ssm1_trend, type='l')
+par(new=TRUE)
+plot(unemp_ssm2_trend, type='l', col=2)
+par(new=TRUE)
+plot(unemp_ssm3_trend, type='l', col=3)
+```
+
+
+```{r echo=FALSE}
+# season
+plot(unemp_ssm1_seasonal, type='l')
+par(new=TRUE)
+plot(unemp_ssm2_seasonal, type='l', col=2)
+par(new=TRUE)
+plot(unemp_ssm3_seasonal, type='l', col=3)
+```
+
+```{r echo=FALSE}
+# irregular
+plot(unemp_ssm1_irregular, type='l')
+par(new=TRUE)
+plot(unemp_ssm2_irregular, type='l', col=2)
+par(new=TRUE)
+plot(unemp_ssm3_irregular, type='l', col=3)
+```
+
+I have a further guess: as long as the ratio between these variances keep same, the results should be same.
+
+# Test further guess
+
+```{r include=FALSE}
+
+ssmm4 <- SSModel(unemp ~ SSMtrend(1, Q=list(1)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 0.1),
+                   H = 10)
+unemp_ssm4 <- KFS(ssmm4)
+
+unemp_ssm4_trend <- coef(unemp_ssm4, states = 'trend')
+unemp_ssm4_seasonal <- -rowSums(coef(unemp_ssm4, states='seasonal'))
+unemp_ssm4_irregular <- unemp[-1] - unemp_ssm4_trend[-1] -
+  unemp_ssm4_seasonal[-length(unemp)]
+
+ssmm5 <- SSModel(unemp ~ SSMtrend(1, Q=list(10)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 1),
+                   H = 100)
+unemp_ssm5 <- KFS(ssmm5)
+
+unemp_ssm5_trend <- coef(unemp_ssm5, states = 'trend')
+unemp_ssm5_seasonal <- -rowSums(coef(unemp_ssm5, states='seasonal'))
+unemp_ssm5_irregular <- unemp[-1] - unemp_ssm5_trend[-1] -
+  unemp_ssm5_seasonal[-length(unemp)]
+```
+
+```{r echo=FALSE}
+# trend
+plot(unemp_ssm4_trend, type='l')
+par(new=TRUE)
+plot(unemp_ssm5_trend, type='l', col=2)
+```
+
+```{r echo=FALSE}
+# season
+plot(unemp_ssm4_seasonal, type='l')
+par(new=TRUE)
+plot(unemp_ssm5_seasonal, type='l', col=2)
+```
+
+```{r echo=FALSE}
+# irregular
+plot(unemp_ssm4_irregular, type='l')
+par(new=TRUE)
+plot(unemp_ssm5_irregular, type='l', col=2)
+```
+
+The results show that my guess is right.
+
+**Comment: **these things should be figured out two months ago! So there is no reason to be happy for finding it!
+
+**Note: ** cause the property I found above, I update the grid search choice then:
+
+# version 2
+
+## Use 'Dif' function defined at beginning 
+
+Here, we take variances from 1:10 for each parameter:
+
+```{r}
+# define the search function
+exhaustion_version2 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:10) {
+     for (j in 1:10) {
+       for (k in 1:10) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = k),
+                   H = i)
+           ssm <- KFS(ssmm)
+           
+           dif <- Dif(x11, ssm, data)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, c(i, j, k))
+         }
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```{r}
+unemp_exhaustionversion2 <- exhaustion_version2(unemp)
+unemp_exhaustionversion2[which.min(unemp_exhaustionversion2$difference),]
+```
+
+If we enlarge the scale of parameters to 1:20:
+
+```{r}
+# define the search function
+# this will cover the function above
+exhaustion_version2 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:20) {
+     for (j in 1:20) {
+       for (k in 1:20) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = k),
+                   H = i)
+           ssm <- KFS(ssmm)
+           
+           dif <- Dif(x11, ssm, data)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, c(i, j, k))
+         }
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```{r}
+unemp_exhaustionversion2 <- exhaustion_version2(unemp)
+unemp_exhaustionversion2[which.min(unemp_exhaustionversion2$difference),]
+```
+
+
+## Use 'Dif' function in Exhaustion2.Rmd(take product instead of sum)
+
+```{r}
+Dif2 <- function(x11, ssm, data){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_seasadj <- series(x11, 'd11')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+ 
+  D <-  sum((x11_trend-ssm_trend)^2) * 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2) *
+    sum((x11_seasadj[-1]-ssm_seasadj)^2)
+  return(D)
+}
+```
+
+Parameters take value in 1:10:
+
+```{r}
+# define the search function
+exhaustion_version2_2 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:10) {
+     for (j in 1:10) {
+       for (k in 1:10) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = k),
+                   H = i)
+           ssm <- KFS(ssmm)
+           
+           dif <- Dif2(x11, ssm, data)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, c(i, j, k))
+         }
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```{r}
+unemp_exhaustionversion2_2 <- exhaustion_version2_2(unemp)
+unemp_exhaustionversion2_2[which.min(unemp_exhaustionversion2_2$difference),]
+```
+
+Parameters take values in 1:20:
+
+```{r}
+# define the search function
+# this will cover the function above
+exhaustion_version2_2 <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:20) {
+     for (j in 1:20) {
+       for (k in 1:20) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(j)) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = k),
+                   H = i)
+           ssm <- KFS(ssmm)
+           
+           dif <- Dif2(x11, ssm, data)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, c(i, j, k))
+         }
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```{r}
+unemp_exhaustionversion2_2 <- exhaustion_version2_2(unemp)
+unemp_exhaustionversion2_2[which.min(unemp_exhaustionversion2_2$difference),]
+unemp_exhaustionversion2_2[17*20*20+11*20+7,]
+
+```
+
+**Based on the result above, we may take c(10,7,4) as the best value that we want.**

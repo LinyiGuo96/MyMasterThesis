@@ -1,0 +1,296 @@
+---
+title: "meeting20200130"
+author: "Lin"
+date: "2020/1/30"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Import 
+```{r, include=FALSE}
+library(doParallel)
+library(GGally)
+library(cowplot)
+library(ggpubr)
+```
+
+```{r echo=FALSE}
+
+setwd("C:/Users/guoly/Desktop/markdown/2020 Winter/BuildThePrior")
+idevalmat1_1 <- read.csv("data/idevalmat1_1.csv")
+idevalmat1_2 <- read.csv("data/idevalmat1_2.csv")
+idevalmat1_3 <- read.csv("data/idevalmat1_3.csv")
+idevalmat1_4 <- read.csv("data/idevalmat1_4.csv")
+idevalmat1_5 <- read.csv("data/idevalmat1_5.csv")
+idevalmat1_6 <- read.csv("data/idevalmat1_6.csv")
+idevalmat1_7 <- read.csv("data/idevalmat1_7.csv")
+idevalmat1_8 <- read.csv("data/idevalmat1_8.csv")
+
+idevalmat2_1 <- read.csv("data/idevalmat2_1.csv")
+idevalmat2_2 <- read.csv("data/idevalmat2_2.csv")
+idevalmat2_3 <- read.csv("data/idevalmat2_3.csv")
+idevalmat2_4 <- read.csv("data/idevalmat2_4.csv")
+idevalmat2_5 <- read.csv("data/idevalmat2_5.csv")
+idevalmat2_6 <- read.csv("data/idevalmat2_6.csv")
+idevalmat2_7 <- read.csv("data/idevalmat2_7.csv")
+idevalmat2_8 <- read.csv("data/idevalmat2_8.csv")
+
+idevalmat3_1 <- read.csv("data/idevalmat3_1.csv")
+idevalmat3_2 <- read.csv("data/idevalmat3_2.csv")
+idevalmat3_3 <- read.csv("data/idevalmat3_3.csv")
+idevalmat3_4 <- read.csv("data/idevalmat3_4.csv")
+idevalmat3_5 <- read.csv("data/idevalmat3_5.csv")
+idevalmat3_6 <- read.csv("data/idevalmat3_6.csv")
+idevalmat3_7 <- read.csv("data/idevalmat3_7.csv")
+idevalmat3_8 <- read.csv("data/idevalmat3_8.csv")
+
+Idevalmat <- rbind(idevalmat1_1,idevalmat1_2,idevalmat1_3,idevalmat1_4,idevalmat1_5,idevalmat1_6,idevalmat1_7,idevalmat1_8,
+                   idevalmat2_1,idevalmat2_2,idevalmat2_3,idevalmat2_4,idevalmat2_5,idevalmat2_6,idevalmat2_7,idevalmat2_8,
+                   idevalmat3_1,idevalmat3_2,idevalmat3_3,idevalmat3_4,idevalmat3_5,idevalmat3_6,idevalmat3_7,idevalmat3_8)
+
+
+Idevalmat1 <- rbind(idevalmat1_1, idevalmat1_2, idevalmat1_3, idevalmat1_4, idevalmat1_5, idevalmat1_6,idevalmat1_7,idevalmat1_8)
+Idevalmat2 <- rbind(idevalmat2_1, idevalmat2_2, idevalmat2_3, idevalmat2_4, idevalmat2_5, idevalmat2_6,idevalmat2_7,idevalmat2_8)
+Idevalmat3 <- rbind(idevalmat3_1, idevalmat3_2, idevalmat3_3, idevalmat3_4, idevalmat3_5, idevalmat3_6,idevalmat3_7,idevalmat3_8)
+# note: the first column of Idevalmat,1,2,3 is 1:n instead of variance 
+
+###### MLE ######
+
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\TS240pre.RData") # TS240
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\TS180pre.RData") # TS180
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\TS120pre.RData") # TS120
+
+
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\mlelist.RData")
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\mlelist1.RData")
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\mlelist2.RData")
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\mlelist3.RData")
+
+
+
+# the distribution of 'best' values
+
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\TS120ideval.RData") #idevalmat1
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\TS180ideval.RData") #idevalmat2
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\TS240ideval.RData") #idevalmat3
+
+idevalmat <- rbind(idevalmat1, idevalmat2, idevalmat3)
+
+
+### log post ###
+
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\logpostlist1.RData")
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\logpostlist2.RData")
+load("C:\\Users\\guoly\\Desktop\\markdown\\2020 Winter\\BuildThePrior\\data\\logpostlist3.RData")
+
+```
+
+The chunk below is to extract the map value from each log-posterior distribution:
+
+```{r echo=FALSE}
+
+cl <- detectCores()
+registerDoParallel(cl)
+
+mapmat1 <- foreach(i = 1:100, .combine = "rbind") %dopar% {
+  
+  map <- logpostlist1[[i]][which.max(logpostlist1[[i]][,3]),]
+  
+  map
+} 
+
+mapmat2 <- foreach(i = 1:100, .combine = "rbind") %dopar% {
+  
+  map <- logpostlist2[[i]][which.max(logpostlist2[[i]][,3]),]
+  
+  map
+} 
+
+mapmat3 <- foreach(i = 1:100, .combine = "rbind") %dopar% {
+  
+  map <- logpostlist3[[i]][which.max(logpostlist3[[i]][,3]),]
+  
+  map
+} 
+
+
+mapmat1 <- data.frame(mapmat1)
+colnames(mapmat1) <- c("variance.1", "variance.2", "logpost")
+
+mapmat2 <- data.frame(mapmat2)
+colnames(mapmat2) <- c("variance.1", "variance.2", "logpost")
+
+mapmat3 <- data.frame(mapmat3)
+colnames(mapmat3) <- c("variance.1", "variance.2", "logpost")
+
+mapmat <- rbind(mapmat1, mapmat2, mapmat3)
+
+```
+
+
+# Plot our results
+
+```{r echo=FALSE}
+
+map11 <- ggplot(mapmat1) +
+  geom_histogram(aes(x=variance.1), color="white", fill = "blue", alpha=.5) +
+  ggtitle("map of ts120")
+
+mle11 <- ggplot(data.frame(mlelist1)) +
+  geom_histogram(aes(x=variance.1), fill="blue", alpha=.5, color="white") +
+  ggtitle("mle of ts120")
+
+ide11 <- ggplot(data.frame(idevalmat1)) +
+  geom_histogram(aes(x=variance.1), fill="blue", alpha=.5, color="white") +
+  ggtitle("ideal of ts120")
+
+ggarrange(map11, mle11, ide11, nrow=3)
+
+
+map12 <- ggplot(mapmat1) +
+  geom_histogram(aes(x=variance.2), color="white", fill = "red", alpha=.5) +
+  ggtitle("map of ts120")
+
+mle12 <- ggplot(data.frame(mlelist1)) +
+  geom_histogram(aes(x=variance.2), fill="red", alpha=.5, color="white") +
+  ggtitle("mle of ts120")
+
+ide12 <- ggplot(data.frame(idevalmat1)) +
+  geom_histogram(aes(x=variance.2), fill="red", alpha=.5, color="white") +
+  ggtitle("ideal of ts120")
+
+ggarrange(map12, mle12, ide12, nrow=3)
+###############
+
+
+
+
+map21 <- ggplot(mapmat2) +
+  geom_histogram(aes(x=variance.1), color="white", fill = "blue", alpha=.5) +
+  ggtitle("map of ts180")
+
+mle21 <- ggplot(data.frame(mlelist2)) +
+  geom_histogram(aes(x=variance.1), fill="blue", alpha=.5, color="white") +
+  ggtitle("mle of ts180")
+
+ide21 <- ggplot(data.frame(idevalmat2)) +
+  geom_histogram(aes(x=variance.1), fill="blue", alpha=.5, color="white") +
+  ggtitle("ideal of ts180")
+
+ggarrange(map21, mle21, ide21, nrow=3)
+
+
+map22 <- ggplot(mapmat2) +
+  geom_histogram(aes(x=variance.2), color="white", fill = "red", alpha=.5) +
+  ggtitle("map of ts180")
+
+mle22 <- ggplot(data.frame(mlelist1)) +
+  geom_histogram(aes(x=variance.2), fill="red", alpha=.5, color="white") +
+  ggtitle("mle of ts180")
+
+ide22 <- ggplot(data.frame(idevalmat2)) +
+  geom_histogram(aes(x=variance.2), fill="red", alpha=.5, color="white") +
+  ggtitle("ideal of ts180")
+
+ggarrange(map22, mle22, ide22, nrow=3)
+###############
+
+
+
+map31 <- ggplot(mapmat3) +
+  geom_histogram(aes(x=variance.1), color="white", fill = "blue", alpha=.5) +
+  ggtitle("map of ts240")
+
+mle31 <- ggplot(data.frame(mlelist3)) +
+  geom_histogram(aes(x=variance.1), fill="blue", alpha=.5, color="white") +
+  ggtitle("mle of ts240")
+
+ide31 <- ggplot(data.frame(idevalmat3)) +
+  geom_histogram(aes(x=variance.1), fill="blue", alpha=.5, color="white") +
+  ggtitle("ideal of ts240")
+
+ggarrange(map31, mle31, ide31, nrow=3)
+
+
+map32 <- ggplot(mapmat3) +
+  geom_histogram(aes(x=variance.2), color="white", fill = "red", alpha=.5) +
+  ggtitle("map of ts240")
+
+mle32 <- ggplot(data.frame(mlelist3)) +
+  geom_histogram(aes(x=variance.2), fill="red", alpha=.5, color="white") +
+  ggtitle("mle of ts240")
+
+ide32 <- ggplot(data.frame(idevalmat3)) +
+  geom_histogram(aes(x=variance.2), fill="red", alpha=.5, color="white") +
+  ggtitle("ideal of ts240")
+
+ggarrange(map32, mle32, ide32, nrow=3)
+
+```
+
+```{r echo=FALSE}
+
+estimate120 <- cbind(mlelist1, mapmat1[,-3], idevalmat1)
+estimate180 <- cbind(mlelist2, mapmat2[,-3], idevalmat2)
+estimate240 <- cbind(mlelist3, mapmat3[,-3], idevalmat3)
+estimatetot <- cbind(mlelist, mapmat[,-3], idevalmat)
+
+colnames(estimate120) <- c("mle1", "mle2", "map1", "map2", "ide1", "ide2")
+colnames(estimate180) <- c("mle1", "mle2", "map1", "map2", "ide1", "ide2")
+colnames(estimate240) <- c("mle1", "mle2", "map1", "map2", "ide1", "ide2")
+colnames(estimatetot) <- c("mle1", "mle2", "map1", "map2", "ide1", "ide2")
+
+```
+
+```{r echo=FALSE}
+
+est11 <- ggparcoord(data=estimate120, columns = c(1,3,5),scale="globalminmax", title = "ts120_var1", showPoints = TRUE,alphaLines = .2) + xlab("") 
+est21 <- ggparcoord(data=estimate180, columns = c(1,3,5),scale="globalminmax", title = "ts180_var1", showPoints = TRUE,alphaLines = .2) + xlab("")
+est31 <- ggparcoord(data=estimate240, columns = c(1,3,5),scale="globalminmax", title = "ts240_var1", showPoints = TRUE,alphaLines = .2) + xlab("")
+est1 <- ggparcoord(data=estimatetot, columns = c(1,3,5),scale="globalminmax", title = "total_var1", showPoints = TRUE,alphaLines = .2) + xlab("")
+
+ggarrange(est11, est21, est31, est1, ncol=2, nrow=2)
+
+
+est12 <- ggparcoord(data=estimate120, columns = c(2,4,6),scale="globalminmax", title = "ts120_var2", showPoints = TRUE,alphaLines = .2) + xlab("") 
+est22 <- ggparcoord(data=estimate180, columns = c(2,4,6),scale="globalminmax", title = "ts180_var2", showPoints = TRUE,alphaLines = .2) + xlab("")
+est32 <- ggparcoord(data=estimate240, columns = c(2,4,6),scale="globalminmax", title = "ts240_var2", showPoints = TRUE,alphaLines = .2) + xlab("")
+est2 <- ggparcoord(data=estimatetot, columns = c(2,4,6),scale="globalminmax", title = "total_var2", showPoints = TRUE,alphaLines = .2) + xlab("")
+
+ggarrange(est12, est22, est32, est2, ncol=2, nrow=2)
+```
+
+```{r echo=FALSE}
+
+pairs11 <- ggpairs(estimate120[,c(1,3,5)], title = "ts120_var1", ggplot2::aes(alpha=.001))
+pairs21 <- ggpairs(estimate180[,c(1,3,5)], title = "ts180_var1", ggplot2::aes(alpha=.001))
+pairs31 <- ggpairs(estimate240[,c(1,3,5)], title = "ts240_var1", ggplot2::aes(alpha=.001))
+pairs1 <- ggpairs(estimatetot[,c(1,3,5)], title = "total_var1", ggplot2::aes(alpha=.001))
+
+plot_grid(
+  ggmatrix_gtable(pairs11),
+  ggmatrix_gtable(pairs21),
+  ggmatrix_gtable(pairs31),
+  ggmatrix_gtable(pairs1),
+  ncol = 2,
+  nrow = 2
+)
+
+
+pairs12 <- ggpairs(estimate120[,c(2,4,6)], title = "ts120_var2", ggplot2::aes(alpha=.001))
+pairs22 <- ggpairs(estimate180[,c(2,4,6)], title = "ts180_var2", ggplot2::aes(alpha=.001))
+pairs32 <- ggpairs(estimate240[,c(2,4,6)], title = "ts240_var2", ggplot2::aes(alpha=.001))
+pairs2 <- ggpairs(estimatetot[,c(2,4,6)], title = "total_var2", ggplot2::aes(alpha=.001))
+
+plot_grid(
+  ggmatrix_gtable(pairs12),
+  ggmatrix_gtable(pairs22),
+  ggmatrix_gtable(pairs32),
+  ggmatrix_gtable(pairs2),
+  ncol = 2,
+  nrow = 2
+)
+
+```
+

@@ -1,0 +1,523 @@
+---
+title: "reproducing2"
+author: "linyiguo"
+date: "2019.6.20"
+output: word_document
+---
+
+--------------------------------------**UPDATE 6.20**--------------------------------------     
+
+中间隔了很久， 很多内容在之间的几次meeting report里，接下来要做的事情，主要是根据上一次meeting *6.17*的内容。
+
+### trend$sd=5, season fixed, weight$sd=10*k(k=range(10))
+```{r}
+Sys.setlocale('LC_ALL','C')
+library(seasonal)
+library(forecast)
+set.seed(1)
+
+# generate data
+model <- Arima(ts(rnorm(24000),freq=12), order=c(0,1,1), seasonal=c(0,1,1),fixed=c(theta=0.5, Theta=0.5))
+data <- simulate(model,nsim=240)
+plot(data,type="l")
+
+# define m_x11
+m_x11 <- seas(data, x11 = "", regression.aictest =  NULL)
+plot(final(m_x11),type="l",ylim=c(-50,2000),ylab="")
+par(new=T)
+plot(as.numeric(data-final(m_x11)), type="l",ylim=c(-50,2000),ylab="")
+
+# Initialization
+a = 150 # a-12 is the length of our t.s.
+lower = -50  # lower bound
+upper = data[a]  # upper bound
+
+for (k in 1:10) {
+  component <- c() # reset the component after each case
+  S <- matrix(0,1000,252) 
+  Tr <- matrix(0,1000,252)
+  Tr[,12] <- data[1]
+  S[,1:12] <- matrix(as.numeric(data-final(m_x11))[1:12],nrow=1000,ncol=12,byrow=T)
+  for (i in 13:a) {
+    # update particles
+    Tr[,i] <- Tr[,i-1] + rnorm(1000,sd=5)
+    if(i%%12==0) S[,i]=S[,12]
+    else S[,i]=S[,i%%12]
+  
+    # update weights
+    w <- dnorm(data[i-12]-Tr[,i]-S[,i],sd=10*k)
+    w <- w/sum(w)
+    
+    # evaluate state value
+    t <- sum(w * Tr[,i])
+    s <- sum(w * S[,i])
+    
+    # add to our component path
+    component <- rbind(component, c(t,s))
+    
+    # resample
+    Tr[,i] <- sample(Tr[,i], size =1000, replace = TRUE, prob = w)
+    S[,i] <- sample(S[,i], size = 1000, replace = TRUE, prob = w)
+  }
+  
+  # data vs deseasoned
+  plot(data[1:(a-12)],type = "l",ylim = c(lower,upper),ylab='')
+  par(new=TRUE)
+  plot(data[1:(a-12)]-component[,2],type="l",col="red",ylim=c(lower,upper),ylab='')
+  par(new=TRUE)
+  plot(component[,2],type="l",col="blue",ylim=c(lower,upper),ylab='')
+  legend("topleft", c("data","deseasoned"),col=c("black","red"),lty=c(1,1))
+
+}
+
+```
+不是很清楚这个warning是什么意思，这个可能就是导致我们这里的seasonal component不固定的原因。(**SOLVED**)
+
+I realized there is no meaning to do such a plot! Our season is fixed so deseasoned curves must be same for these cases. Actually, we should try the curve of *trend+season* since currently the independent variable we focus on is the variance of our weight, which represents the variance of data-(trend+season),that is the distance between data and trend+season:
+
+### trend$sd=5, season fixed, weight$sd=10*k(k=range(10))
+```{r}
+
+
+# Initialization
+a = 150 # a-12 is the length of our t.s.
+lower = -50  # lower bound
+upper = data[a]  # upper bound
+
+for (k in 1:10) {
+  component <- c() # reset the component after each case
+  S <- matrix(0,1000,252) 
+  Tr <- matrix(0,1000,252)
+  Tr[,12] <- data[1]
+  S[,1:12] <- matrix(as.numeric(data-final(m_x11))[1:12],nrow=1000,ncol=12,byrow=T)
+  for (i in 13:a) {
+    # update particles
+    Tr[,i] <- Tr[,i-1] + rnorm(1000,sd=5)
+    if(i%%12==0) S[,i]=S[,12]
+    else S[,i]=S[,i%%12]
+  
+    # update weights
+    w <- dnorm(data[i-12]-Tr[,i]-S[,i],sd=10*k)
+    w <- w/sum(w)
+    
+    # evaluate state value
+    t <- sum(w * Tr[,i])
+    s <- sum(w * S[,i])
+    
+    # add to our component path
+    component <- rbind(component, c(t,s))
+    
+    # resample
+    Tr[,i] <- sample(Tr[,i], size =1000, replace = TRUE, prob = w)
+    S[,i] <- sample(S[,i], size = 1000, replace = TRUE, prob = w)
+  }
+  
+  # data vs deseasoned
+  plot(data[1:(a-12)],type = "l",ylim = c(lower,upper),ylab='')
+  par(new=TRUE)
+  plot(component[,1]+component[,2],type="l",col="red",ylim=c(lower,upper),ylab='')
+  par(new=TRUE)
+  plot(component[,1],type="l",col="blue",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(data[1:(a-12)]-component[,1]-component[,2],type="l",col='green',ylim=c(lower,upper),ylab='')
+  legend("topleft", c("data","T+S","T",'detrend&deseason'),col=c("black","red","blue",'green'),lty=c(1,1,1,1))
+
+}
+
+
+```
+
+**comment: ** The trend+season curve here is not smooth enough, but our trend is very smooth. We should try to let seasonal part be changeable.
+
+--------------------------------------------------
+**UPDATE 6.22** 自己似乎忘记了我们的重点是要哪条曲线。不忘初衷啊年轻人。seasonal adjustment！我们最终是想估计季节变化的影响并把这个影响从现实数据中移除。因此还是要先关注seasonal adjustment之后的数据，其它的可以先放一放。 
+--------------------------------------------------
+
+
+### trend$sd=5, season$sd=5, weight$sd=10*k(k=range(10))
+```{r}
+Sys.setlocale('LC_ALL','C')
+library(seasonal)
+library(forecast)
+set.seed(1)
+
+# generate data
+model <- Arima(ts(rnorm(24000),freq=12), order=c(0,1,1), seasonal=c(0,1,1),fixed=c(theta=0.5, Theta=0.5))
+data <- simulate(model,nsim=240)
+
+# define m_x11
+m_x11 <- seas(data, x11 = "", regression.aictest =  NULL)
+
+# Initialization
+a = 150 # a-12 is the length of our t.s.
+lower = -50  # lower bound
+upper = data[a]  # upper bound
+
+for (k in 0:10) {
+  component <- c() # reset the component after each case
+  S <- matrix(0,1000,252) 
+  Tr <- matrix(0,1000,252)
+  Tr[,12] <- data[1]
+  S[,1:12] <- matrix(as.numeric(data-final(m_x11))[1:12],nrow=1000,ncol=12,byrow=T)
+  for (i in 13:a) {
+    # update particles
+    Tr[,i] <- Tr[,i-1] + rnorm(1000,sd=5)
+    for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+    S[,i] <- S[,i] + rnorm(1000,sd=5)
+  
+    # update weights
+    w <- dnorm(data[i-12]-Tr[,i]-S[,i],sd=5+10*k)
+    w <- w/sum(w)
+    
+    # evaluate state value
+    t <- sum(w * Tr[,i])
+    s <- sum(w * S[,i])
+    
+    # add to our component path
+    component <- rbind(component, c(t,s))
+    
+    # resample
+    Tr[,i] <- sample(Tr[,i], size =1000, replace = TRUE, prob = w)
+    S[,i] <- sample(S[,i], size = 1000, replace = TRUE, prob = w)
+  }
+  
+  # data vs deseasoned
+  plot(data[1:(a-12)],type = "l",ylim = c(lower,upper),ylab='')
+  par(new=T)
+  plot(data[1:(a-12)]-component[,2],type="l",col="orange",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(component[,2],type="l",col="blue",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(component[,1],type="l",col="red",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(as.numeric(data-final(m_x11))[1:(a-12)],type="l",lty=2,ylim=c(lower,upper),ylab='')
+  legend("topleft", c("data","deseasoned","trend","season"),col=c("black","orange","red","blue"),lty=c(1,1,1,1))
+
+}
+
+```
+
+
+### 我们在权重的计算中加入对seasonal的考虑(# of particles = 100000)
+**trend$sd = season$sd = 5**
+```{r}
+
+# Initialization
+a = 180 # a-12 is the length of our t.s.
+lower = -50  # lower bound
+upper = data[a]  # upper bound
+
+for (k in 0:10) {
+  component <- c() # reset the component after each case
+  S <- matrix(0,100000,252) 
+  Tr <- matrix(0,100000,252)
+  Tr[,12] <- data[1]
+  S[,1:12] <- matrix(as.numeric(data-final(m_x11))[1:12],nrow=100000,ncol=12,byrow=T)
+  for (i in 13:a) {
+    # update particles
+    Tr[,i] <- Tr[,i-1] + rnorm(100000,sd=5)
+    for (j in 1:11) S[,i] <- S[,i]-S[,i-j]
+    S[,i] <- S[,i] + rnorm(100000,sd=5)
+  
+    # update weights
+    w <- dnorm(data[i-12]-Tr[,i]-S[,i],sd=5+10*k) * dnorm(rowSums(S[,(i-11):i]),sd=5)
+    w <- w/sum(w)
+    
+    # evaluate state value
+    t <- sum(w * Tr[,i])
+    s <- sum(w * S[,i])
+    
+    # add to our component path
+    component <- rbind(component, c(t,s))
+    
+    # resample
+    Tr[,i] <- sample(Tr[,i], size =100000, replace = TRUE, prob = w)
+    S[,i] <- sample(S[,i], size = 100000, replace = TRUE, prob = w)
+  }
+  
+  # data vs deseasoned
+  plot(data[1:(a-12)],type = "l",ylim = c(lower,upper),ylab='')
+  par(new=T)
+  plot(data[1:(a-12)]-component[,2],type="l",col="orange",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(component[,2],type="l",col="blue",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(component[,1],type="l",col="red",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(as.numeric(data-final(m_x11))[1:(a-12)],type="l",lty=2,ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(as.numeric(final(m_x11))[1:(a-12)],type="l",lty=2,col="purple",ylim=c(lower,upper),ylab='')
+  legend("topleft", c("data","deseasoned","trend","season"),col=c("black","orange","red","blue"),lty=c(1,1,1,1))
+
+}
+
+```
+
+### Back to our simulated data, use conventional methods to get season/trend and the irregular.
+
+```{r}
+library(tseries)
+library(seasonalview)
+Sys.setlocale('LC_ALL','C')
+unemp_x11=seas(unemp,x11="")
+summary(unemp_x11)
+unemp
+m = seas(unemp)
+series(m,"forecast.forecasts")
+
+plot(series(m,"forecast.forecasts"))
+series(m,c("forecast.forecasts","s12"))
+series(m,"history.saestimates")
+series(m,"slidingspans.sfspans")
+# out(m)  shows the content of the main X-13 output in the browser
+# which gives access to every detail of the estimation
+view(m)
+view(m_x11)
+
+# use the initial code we learned at the beginning
+dif1data <- diff(data,differences = 1)
+plot(dif1data)
+adf.test(dif1data,alternative = "stationary")
+library("TSA")
+PGram<-periodogram(dif1data)
+PGramAsDataFrame = data.frame(freq=PGram$freq, spec=PGram$spec)
+order = PGramAsDataFrame[order(-PGramAsDataFrame$spec),]
+top2 = head(order)
+top2
+1/top2[1,1]
+datafreq12 <- ts(data,freq=12)
+datadecom<-decompose(datafreq12)
+plot(datadecom)
+plot(datadecom$seasonal,ylim=c(-60,60),col="red")
+par(new=T)
+plot(data-final(m_x11),ylim=c(-60,60))
+
+```
+
+
+## treat 24 seasonal components as a cycle
+
+Recall that our former formula of seasonal component is $S_t = \sum_{j=1}^{11} S_{t-j}+\epsilon_t$; and now we use $S_t = \sum_{j=1}^{23} S_{t-j}+\epsilon_t$, that is, we consider more states before when we decide current state.
+
+** trend$sd = season$sd = 5, # of particles = 100000, weight$sd=5+10*k **
+```{r}
+
+Sys.setlocale('LC_ALL','C')
+# Initialization
+a = 120 # a-23 is the length of our t.s.
+lower = -50  # lower bound
+upper = data[a]  # upper bound
+
+for (k in 0:10) {
+  component <- c() # reset the component after each case
+  S <- matrix(0,100000,263) 
+  Tr <- matrix(0,100000,263)
+  Tr[,23] <- data[1]
+  S[,1:23] <- matrix(as.numeric(data-final(m_x11))[1:23],nrow=100000,ncol=23,byrow=T)
+  for (i in 24:a) {
+    # update particles
+    Tr[,i] <- Tr[,i-1] + rnorm(100000,sd=5)
+    for (j in 1:23) S[,i] <- S[,i]-S[,i-j]
+    S[,i] <- S[,i] + rnorm(100000,sd=5)
+  
+    # update weights
+    w <- dnorm(data[i-23]-Tr[,i]-S[,i],sd=5+10*k)
+    w <- w/sum(w)
+    
+    # evaluate state value
+    t <- sum(w * Tr[,i])
+    s <- sum(w * S[,i])
+    
+    # add to our component path
+    component <- rbind(component, c(t,s))
+    
+    # resample
+    Tr[,i] <- sample(Tr[,i], size =100000, replace = TRUE, prob = w)
+    S[,i] <- sample(S[,i], size = 100000, replace = TRUE, prob = w)
+  }
+  
+  # data vs deseasoned
+  plot(data[1:(a-23)],type = "l",ylim = c(lower,upper),ylab='')
+  par(new=T)
+  plot(data[1:(a-23)]-component[,2],type="l",col="orange",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(component[,2],type="l",col="blue",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(component[,1],type="l",col="red",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(as.numeric(data-final(m_x11))[1:(a-23)],type="l",lty=2,ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(as.numeric(final(m_x11))[1:(a-23)],type="l",lty=2,col="purple",ylim=c(lower,upper),ylab='')
+  legend("topleft", c("data","deseasoned","trend","season"),col=c("black","orange","red","blue"),lty=c(1,1,1,1))
+
+}
+```
+## treat 24 seasonal components as a cycle and consider season influence in weight expression
+
+** trend$sd = season$sd = 5, # of particles = 100000**
+
+```{r}
+Sys.setlocale('LC_ALL','C')
+library(seasonal)
+# Initialization
+a = 110 # a-23 is the length of our t.s.
+lower = -50  # lower bound
+upper = data[a]  # upper bound
+
+for (k in 0:10) {
+  component <- c() # reset the component after each case
+  S <- matrix(0,100000,263) 
+  Tr <- matrix(0,100000,263)
+  Tr[,23] <- data[1]
+  S[,1:23] <- matrix(as.numeric(data-final(m_x11))[1:23],nrow=100000,ncol=23,byrow=T)
+  for (i in 24:a) {
+    # update particles
+    Tr[,i] <- Tr[,i-1] + rnorm(100000,sd=5)
+    for (j in 1:23) S[,i] <- S[,i]-S[,i-j]
+    S[,i] <- S[,i] + rnorm(100000,sd=5)
+  
+    # update weights
+    w <- dnorm(data[i-23]-Tr[,i]-S[,i],sd=5+10*k) * dnorm(rowSums(S[,(i-23):i]),sd=5)
+    w <- w/sum(w)
+    
+    # evaluate state value
+    t <- sum(w * Tr[,i])
+    s <- sum(w * S[,i])
+    
+    # add to our component path
+    component <- rbind(component, c(t,s))
+    
+    # resample
+    Tr[,i] <- sample(Tr[,i], size =100000, replace = TRUE, prob = w)
+    S[,i] <- sample(S[,i], size = 100000, replace = TRUE, prob = w)
+  }
+  
+  # data vs deseasoned
+  plot(data[1:(a-23)],type = "l",ylim = c(lower,upper),ylab='')
+  par(new=T)
+  plot(data[1:(a-23)]-component[,2],type="l",col="orange",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(component[,2],type="l",col="blue",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(component[,1],type="l",col="red",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(as.numeric(data-final(m_x11))[1:(a-23)],type="l",lty=2,ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(as.numeric(final(m_x11))[1:(a-23)],type="l",lty=2,col="purple",ylim=c(lower,upper),ylab='')
+  legend("topleft", c("data","deseasoned","trend","season"),col=c("black","orange","red","blue"),lty=c(1,1,1,1))
+
+}
+```
+
+## Seasonal cycle = 24 
+
+**trend$sd=5, season$sd = 1, weight$sd=5+10*k **
+```{r}
+library(seasonal)
+# Initialization
+a = 160 # a-23 is the length of our t.s.
+lower = -50  # lower bound
+upper = data[a]  # upper bound
+
+for (k in 0:10) {
+  component <- c() # reset the component after each case
+  S <- matrix(0,100000,263) 
+  Tr <- matrix(0,100000,263)
+  Tr[,23] <- data[1]
+  S[,1:23] <- matrix(as.numeric(data-final(m_x11))[1:23],nrow=100000,ncol=23,byrow=T)
+  for (i in 24:a) {
+    # update particles
+    Tr[,i] <- Tr[,i-1] + rnorm(100000,sd=5)
+    for (j in 1:23) S[,i] <- S[,i]-S[,i-j]
+    S[,i] <- S[,i] + rnorm(100000,sd=1)
+  
+    # update weights
+    w <- dnorm(data[i-23]-Tr[,i]-S[,i],sd=5+10*k)
+    w <- w/sum(w)
+    
+    # evaluate state value
+    t <- sum(w * Tr[,i])
+    s <- sum(w * S[,i])
+    
+    # add to our component path
+    component <- rbind(component, c(t,s))
+    
+    # resample
+    Tr[,i] <- sample(Tr[,i], size =100000, replace = TRUE, prob = w)
+    S[,i] <- sample(S[,i], size = 100000, replace = TRUE, prob = w)
+  }
+  
+  # data vs deseasoned
+  plot(data[1:(a-23)],type = "l",ylim = c(lower,upper),ylab='')
+  par(new=T)
+  plot(data[1:(a-23)]-component[,2],type="l",col="orange",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(component[,2],type="l",col="blue",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(component[,1],type="l",col="red",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(as.numeric(data-final(m_x11))[1:(a-23)],type="l",lty=2,ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(as.numeric(final(m_x11))[1:(a-23)],type="l",lty=2,col="purple",ylim=c(lower,upper),ylab='')
+  legend("topleft", c("data","deseasoned","trend","season"),col=c("black","orange","red","blue"),lty=c(1,1,1,1))
+
+}
+```
+
+
+
+## Seasonal cycle = 24 and consider the seasonal influence on weights
+
+**trend$sd=5, season$sd = 1, weight$sd=5+10*k **
+```{r}
+library(seasonal)
+Sys.setlocale('LC_ALL','C')
+# Initialization
+a = 150 # a-23 is the length of our t.s.
+lower = -50  # lower bound
+upper = data[a]  # upper bound
+
+for (k in 0:10) {
+  component <- c() # reset the component after each case
+  S <- matrix(0,100000,263) 
+  Tr <- matrix(0,100000,263)
+  Tr[,23] <- data[1]
+  S[,1:23] <- matrix(as.numeric(data-final(m_x11))[1:23],nrow=100000,ncol=23,byrow=T)
+  for (i in 24:a) {
+    # update particles
+    Tr[,i] <- Tr[,i-1] + rnorm(100000,sd=5)
+    for (j in 1:23) S[,i] <- S[,i]-S[,i-j]
+    S[,i] <- S[,i] + rnorm(100000,sd=1)
+  
+    # update weights
+    w <- dnorm(data[i-23]-Tr[,i]-S[,i],sd=5+10*k) * dnorm(rowSums(S[,(i-23):i]),sd=1)
+    w <- w/sum(w)
+    
+    # evaluate state value
+    t <- sum(w * Tr[,i])
+    s <- sum(w * S[,i])
+    
+    # add to our component path
+    component <- rbind(component, c(t,s))
+    
+    # resample
+    Tr[,i] <- sample(Tr[,i], size =100000, replace = TRUE, prob = w)
+    S[,i] <- sample(S[,i], size = 100000, replace = TRUE, prob = w)
+  }
+  
+  # data vs deseasoned
+  plot(data[1:(a-23)],type = "l",ylim = c(lower,upper),ylab='')
+  par(new=T)
+  plot(data[1:(a-23)]-component[,2],type="l",col="orange",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(component[,2],type="l",col="blue",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(component[,1],type="l",col="red",ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(as.numeric(data-final(m_x11))[1:(a-23)],type="l",lty=2,ylim=c(lower,upper),ylab='')
+  par(new=T)
+  plot(as.numeric(final(m_x11))[1:(a-23)],type="l",lty=2,col="purple",ylim=c(lower,upper),ylab='')
+  legend("topleft", c("data","deseasoned","trend","season"),col=c("black","orange","red","blue"),lty=c(1,1,1,1))
+
+}
+```

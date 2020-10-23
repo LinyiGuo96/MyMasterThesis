@@ -1,0 +1,242 @@
+---
+title: "Exhaustion2"
+author: "LinyiGuo"
+date: "2019/10/21"
+output: 
+  html_document:
+    toc: true
+  pdf_document:
+    toc: true
+---
+
+The datasets I used before is 'multiplicative', which is not traditional case I learned so far. Although I thought it wasn't complex when dealing with, it is not easy, at least the result is not good.(**Comment: I was wrong before cause I forgot the negative sign in seasonal component expression, and this is the reason why the curves behave bad. (2019.10.23) **)
+
+I am going to use the dataset 'unemp' in 'seasonal' package in this document at first.
+
+```{r include=FALSE}
+rm(list=ls())
+set.seed(9483)
+```
+```{r include=FALSE}
+library(seasonal)
+library(KFAS)
+library(ggplot2)
+```
+
+```{r model construction}
+unemp_x11 <- seas(unemp, x11='')
+unemp_ssmm <- SSModel(unemp ~ SSMtrend(1,Q=list(1)) + 
+                        SSMseasonal(12, Q=1, sea.type = 'dummy'), H=1)
+unemp_ssm <- KFS(unemp_ssmm)
+```
+
+We let variances to be (1,1,1) at first and results will be:
+
+```{r component, echo=FALSE}
+unemp_x11_trend <- series(unemp_x11, 'd12')
+unemp_x11_seasonal <- series(unemp_x11, 'd10')
+unemp_x11_seasadj <- series(unemp_x11, 'd11')
+
+unemp_ssm_trend <- coef(unemp_ssm, states = 'trend')
+unemp_ssm_seasonal <- ts(-rowSums(coef(unemp_ssm, states = 'seasonal')), 
+                       start = c(1990,1), frequency = 12)
+unemp_ssm_seasadj <- unemp[-1] - unemp_ssm_seasonal[-length(unemp)]
+
+```
+
+```{r trend comparison, echo=FALSE}
+plot(unemp_x11_trend, ylim=c(5500,15000), ylab='', type='l')
+par(new=TRUE)
+plot(unemp_ssm_trend, ylim=c(5500,15000), ylab='',type='l',
+     col=2)
+
+title(main = 'Trend series')
+legend('topleft', c('x11','ssm'), col=c(1,2), lty=1)
+```
+```{r seasonal comparison1, echo=FALSE}
+plot(unemp_x11_seasonal,
+        ylim=c(-700,1000), ylab='', type='l')
+par(new=TRUE)
+plot(unemp_ssm_seasonal,
+     ylim=c(-700,1000), ylab='',type='l',
+     col=2)
+
+title(main = 'Seaonal series')
+legend('topleft', c('x11','ssm'), col=c(1,2), lty=1, cex=.8)
+```
+
+Extract the first 100 points:
+
+```{r seasonal comparison2, echo=FALSE}
+plot(unemp_x11_seasonal[1:100], ylim=c(-700,1000), ylab='', type='l')
+par(new=TRUE)
+plot(unemp_ssm_seasonal[1:100], ylim=c(-700,1000), ylab='',type='l',
+     col=2)
+
+title(main = 'Seaonal series(first 100 points)')
+legend('topleft', c('x11','ssm'), col=c(1,2), lty=1, cex=.8)
+```
+
+**Problem: ** the seasonal curve of ssm is ahead of that of x11 with one unit(one month). And this occured before in the statcan retailsales case(total) too.
+
+We abandon the first point in x11 results and the last one in ssm, then their results are pretty close.
+
+```{r seasonal comparison3}
+plot(unemp_x11_seasonal[-1][1:100], ylim=c(-700,1000), ylab='', type='l')
+par(new=TRUE)
+plot(unemp_ssm_seasonal[-length(unemp)][1:100], ylim=c(-700,1000),
+     ylab='',type='l', col=2)
+title(main = 'Adjusted Seaonal series(first 100 points)')
+legend('topleft', c('x11','ssm'), col=c(1,2), lty=1, cex=.8)
+```
+
+```{r seasadj, echo=FALSE}
+# unemp_ssm_seasadj <- unemp[-1] - unemp_ssm_seasonal[-length(unemp)]
+
+plot(ts(unemp_x11_seasadj[-1], start = c(1990,2), frequency=12),
+        ylim=c(5500,15000), ylab='', type='l')
+par(new=TRUE)
+plot(ts(unemp_ssm_seasadj, start = c(1990,2), frequency = 12), 
+     ylim=c(5500,15000), ylab='', type = 'l', col = 2)
+
+title(main = 'Seaonal adjusted series')
+legend('topleft', c('x11','ssm'), col=c(1,2), lty=1, cex=.8)
+
+```
+
+This result looks better than that of multiplicative cases.
+
+# Find the 'ideal' parameters' values
+
+Here, I use the product of the sum of squared differences between x11 and ssm, that is: $$\sum(X11_{trend}-SSM_{trend})^2 * \sum(X11_{seasonal}-SSM_{seasonal})^2 * \sum(X11_{seasadj}-SSM_{seasadj})^2$$ 
+
+And naturally, we perfer to choose the parameter corresponding to the **smallest** value.
+
+```{r}
+# define our standard to choose parameters
+# note this is for additive models
+Dif <- function(x11, ssm, data){
+  
+  x11_trend <- series(x11, 'd12')
+  x11_seasonal <- series(x11, 'd10')
+  x11_seasadj <- series(x11, 'd11')
+  
+  ssm_trend <- coef(ssm, states = 'trend')
+  ssm_seasonal <- -rowSums(coef(ssm, states='seasonal'))
+  ssm_seasadj <- data[-1] - ssm_seasonal[-length(data)] # length is shorter
+ 
+  D <-  sum((x11_trend-ssm_trend)^2) * 
+    sum((x11_seasonal[-1]-ssm_seasonal[-length(data)])^2) *
+    sum((x11_seasadj[-1]-ssm_seasadj)^2)
+  return(D)
+}
+```
+
+Here we let the variance to be *0.001, 0.01, 0.1, 1, 10, 100*.
+
+```{r}  
+# define the search function
+exhaustion <- function(data){
+  
+  Difference <- c()
+  index <- c()
+  
+  x11 <- seas(data, x11='')
+   for (i in 1:6) {
+     for (j in 1:6) {
+       for (k in 1:6) {
+         
+           ssmm <- SSModel(data ~ SSMtrend(1, Q=list(10^(-4+j))) + 
+                     SSMseasonal(12, sea.type = 'dummy', Q = 10^(-4+k)),
+                   H = 10^(-4+i))
+           ssm <- KFS(ssmm)
+           
+           dif <- Dif(x11, ssm, data)
+           
+           Difference <- c(Difference, dif)
+           
+           index <- rbind(index, c(10^(-4+i),10^(-4+j),10^(-4+k)))
+         }
+      }
+   }
+  
+  df <- data.frame(variance=index, difference = Difference)
+  return(df)
+}
+```
+
+```{r}
+unemp_exhaustion <- exhaustion(unemp)
+unemp_exhaustion[which.min(unemp_exhaustion$difference),]
+```
+
+```{r}
+unemp_ssmm <- SSModel(unemp ~ SSMtrend(1,Q=list(10)) + 
+                        SSMseasonal(12, Q=10, sea.type = 'dummy'), H=10)
+unemp_ssm <- KFS(unemp_ssmm)
+```
+
+```{r}
+unemp_ssm_trend <- coef(unemp_ssm, states = 'trend')
+unemp_ssm_seasonal <- ts(-rowSums(coef(unemp_ssm, states = 'seasonal')), 
+                       start = c(1990,1), frequency = 12)
+unemp_ssm_seasadj <- unemp[-1] - unemp_ssm_seasonal[-length(unemp)]
+
+```
+
+Here are results:
+
+```{r  update trend comparison, echo=FALSE}
+plot(unemp_x11_trend, ylim=c(5500,15000), ylab='', type='l')
+par(new=TRUE)
+plot(unemp_ssm_trend, ylim=c(5500,15000), ylab='',type='l',
+     col=2)
+
+title(main = 'Trend series')
+legend('topleft', c('x11','ssm'), col=c(1,2), lty=1)
+```
+
+```{r update seasonal comparison1, echo=FALSE}
+plot(ts(unemp_x11_seasonal[-1], frequency = 12, start = c(1990,02)),
+        ylim=c(-700,1000), ylab='', type='l')
+par(new=TRUE)
+plot(ts(unemp_ssm_seasonal[-length(unemp)], frequency = 12, start = c(1990,02)),
+     ylim=c(-700,1000), ylab='',type='l',
+     col=2)
+
+title(main = 'Adjusted Seaonal series')
+legend('topleft', c('x11','ssm'), col=c(1,2), lty=1, cex=.8)
+```
+
+
+```{r update seasonal comparison2, echo=FALSE}
+plot(ts(unemp_x11_seasonal[-1][1:100], frequency = 12, start = c(1990,02)),
+        ylim=c(-700,1000), ylab='', type='l')
+par(new=TRUE)
+plot(ts(unemp_ssm_seasonal[-length(unemp)][1:100], frequency = 12, start = c(1990,02)),
+     ylim=c(-700,1000), ylab='',type='l',
+     col=2)
+
+title(main = 'Adjusted Seaonal series(first 100 points)')
+legend('topleft', c('x11','ssm'), col=c(1,2), lty=1, cex = 0.8)
+```
+
+```{r update seasadj, echo=FALSE}
+# unemp_ssm_seasadj <- unemp[-1] - unemp_ssm_seasonal[-length(unemp)]
+
+plot(ts(unemp_x11_seasadj[-1], frequency = 12, start = c(1990,02)),
+     ylim=c(5500,15000), ylab='')
+par(new=TRUE)
+plot(ts(unemp_ssm_seasadj,start = c(1990,2),frequency = 12),
+     ylim=c(5500,15000), ylab='',
+     col = 2, type = 'l')
+title(main = 'Seaonal adjusted series', ylab = 'unemployment')
+legend('topleft', c('x11','ssm'), col=c(1,2), lty=1)
+```
+
+
+Let's suppose the best value of parameters are (10,10,10) in *unemp* dataset.
+
+What we want to do then is get the similar result given by bayesian without help of *seasonal* package.
+
+# Continued in MLE&MAP4

@@ -1,0 +1,40 @@
+---
+title: "Question about MLE"
+author: "LinyiGuo"
+date: "2019/9/16"
+output: 
+   pdf_document: default
+   html_document: default
+---
+Hi Aaron,
+
+This .pdf file is to illustrate my question about MLE's(or likelihood) computation.
+
+When we talked about MAP, to compute it, we need to know the likelihood function for our parameters at first. 
+
+For the expression in SSM, 
+
+* $y_t = \mu_t+\gamma_t + \epsilon_t$ , where $\epsilon_t \sim N(0,\sigma_y^2)$
+
+* $\mu_{t+1} = \mu_t + \phi_t$  , where $\phi_t \sim N(0,\sigma_\mu^2)$
+
+* $\gamma_t= \sum_{j=1}^{s/2} \gamma_{jt}$
+
+* $\gamma_{j,t+1} = \gamma_{jt} cos\lambda_j + \gamma_{jt}^* sin\lambda_j + \omega_{jt}$
+
+* $\gamma_{j,t+1}^* = - \gamma_{jt} sin\lambda_j + \gamma_{jt}^* sin\lambda_j + \omega_{jt}^*$   , where $\omega_{jt},\omega_{jt}^* \sim N(0,\sigma_\gamma^2)$
+ 
+In Bayesian, if I want to compute the MAP of one parameter $\theta$, I need to know the posteriori of it, which is essentially equal to compute the product of the prior of $\theta$ and the likelihood of it.
+
+Now, the prior will be given by us manually. My problem is how to get the likelihood expression of $\theta$ without other parameters.
+
+In our problem, if I write down the likelihood expression of $\sigma_y^2$, it will be 
+$$L(\sigma_y) = \prod_{i=1}^n \frac{1}{\sqrt{2\pi\sigma_y^2}}exp(-\frac{{y_i-\mu_i-\gamma_i}^2}{2\sigma_y^2})$$
+
+that is to say:
+
+$$L(\sigma_y) \propto \frac{1}{\sigma_y^2} exp(-\frac{\sum_{i=1}^n{y_i-\mu_i-\gamma_i}^2}{2\sigma_y^2})$$
+
+But we only know the series $\{y_t\}$ which is our data but don't know the information of trend series $\{\mu_t\}$ and $\{\gamma_t\}$. 
+
+Therefore, my question is how to fix this?(Similarly for other variances)

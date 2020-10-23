@@ -1,0 +1,58 @@
+---
+title: "airline model(Bayesian Tools)"
+author: "LinyiGuo"
+date: "2019/7/27"
+output: html_document
+---
+
+## set parameters' values
+
+```{r}
+library(BayesianTools)
+library(forecast)
+data("AirPassengers")
+data_ap <- AirPassengers
+params <- data.frame(1,1,1)
+colnames(params) <- c("sigma","eta","omega")
+Y <- data_ap[1]
+```
+
+## set up likelihood
+
+```{r}
+likelihood <- function(trend, season, Y, params){
+  dnorm(Y-trend-season, mean = 0, sd = params$sigma, log = TRUE)
+}
+```
+
+## set up the prior
+
+```{r}
+density <- function(params, trend, season){
+  dnorm(trend, 0 , params$eta) + dnorm(season, 0, params$omega, log = T)
+}
+sampler <- function(n=1){
+  trend <- rnorm(n, mean = Y, sd=params$eta)
+  season <- rnorm(n, mean = 0, sd=params$omega)
+  return(c(trend,season))
+}
+Prior <- createPrior(density=density, sampler = sampler, lower = c(-1000,-1000), upper = c(1000,1000))
+```
+
+## bayesian setup
+
+```{r}
+bayesiansetup <- createBayesianSetup(likelihood, Prior)
+```
+
+## settings for smc
+
+```{r}
+settings <- list(initialParticles = 100, iterations = 1)
+```
+
+## put them together
+
+```{r}
+# WRONG out <- runMCMC(bayesiansetup, sampler = "SMC", settings = settings)
+```
