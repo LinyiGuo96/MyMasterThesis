@@ -1,2 +1,4 @@
 # MyMasterThesis
-This repository contains all files that are related to my master research.
+
+This repository basically contains all files that are related to my master research.
+
